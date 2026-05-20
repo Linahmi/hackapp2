@@ -293,12 +293,15 @@ function procurementProviders(response: ProcurementSearchResponse): Provider[] {
       : ""
 
     return {
+      matchedFields: result.matchedFields.map(fieldLabel),
       name: result.supplierName || result.title,
       reasoning: `${result.snippet || result.title}${
         matched ? ` Matched: ${matched}.` : ""
       }${warnings}`,
       score: Math.round(result.estimatedFit * 100),
+      snippet: result.snippet || result.title,
       url: result.url,
+      warnings: result.warnings,
     }
   })
 }
