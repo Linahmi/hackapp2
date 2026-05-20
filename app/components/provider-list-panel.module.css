@@ -50,6 +50,11 @@
   box-shadow: 0 16px 38px -30px rgb(0 0 0 / 0.45);
 }
 
+.card[data-selected="true"] {
+  border-color: color-mix(in oklab, var(--result-accent), transparent 42%);
+  background: color-mix(in oklab, var(--result-surface-hover), var(--result-accent) 4%);
+}
+
 .cardButton {
   display: grid;
   width: 100%;
@@ -148,6 +153,25 @@
   color: color-mix(in oklab, var(--result-accent), var(--foreground) 12%);
   padding: 0.34rem 0.62rem;
   white-space: nowrap;
+}
+
+.selectionPill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--result-border);
+  border-radius: 999px;
+  color: var(--result-muted);
+  font-size: 0.69rem;
+  font-weight: 650;
+  line-height: 1;
+  padding: 0.36rem 0.58rem;
+  white-space: nowrap;
+}
+
+.card[data-selected="true"] .selectionPill {
+  border-color: color-mix(in oklab, var(--result-accent), transparent 58%);
+  background: color-mix(in oklab, var(--result-accent), transparent 90%);
+  color: color-mix(in oklab, var(--result-accent), var(--foreground) 10%);
 }
 
 .scoreValue {

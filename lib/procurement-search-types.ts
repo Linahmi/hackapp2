@@ -75,3 +75,49 @@ export type ProcurementSearchResponse = {
   }[]
   warnings: string[]
 }
+
+export type ProcurementCompanyDetailsResponse = {
+  budgetFit: string
+  company: {
+    domain: string
+    name: string
+    score: number
+    url: string
+  }
+  complianceFit: string
+  deliveryFit: string
+  evidence: {
+    snippet: string
+    title: string
+    url: string
+  }[]
+  matchingSpecifications: string[]
+  priceRange: string
+  productAvailability: string
+  risks: string[]
+  usefulLinks: {
+    label: string
+    type: "source" | "product" | "quote" | "contact" | "sales"
+    url: string
+  }[]
+}
+
+export type ProcurementQuoteResponse = {
+  documentText: string
+  email: {
+    body: string
+    canSend: boolean
+    recipient: string | null
+    subject: string
+  }
+  quotation: {
+    appName: string
+    generatedDate: string
+    providerCompany: string
+    sections: {
+      label: string
+      value: string | string[]
+    }[]
+    title: string
+  }
+}

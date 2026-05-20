@@ -89,18 +89,26 @@ function metricExplanation(metric: ProviderMetric) {
 }
 
 function CompanyResultCard({
+  defaultExpanded,
   index,
+  onSelect,
   provider,
+  selectable,
+  selected,
 }: {
+  defaultExpanded: boolean;
   index: number;
+  onSelect?: () => void;
   provider: RankedProvider & {
     domain: string;
     logo: string;
     metrics: ProviderMetric[];
     tags: string[];
   };
+  selectable?: boolean;
+  selected?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(index === 0);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const visibleTags = provider.tags.slice(0, 4);
   const hiddenTagCount = Math.max(0, provider.tags.length - visibleTags.length);
   const warning = warningLabel(provider.warnings);
@@ -108,11 +116,19 @@ function CompanyResultCard({
   const detailsId = `provider-details-${index}`;
 
   return (
-    <article className={styles.card} data-expanded={expanded}>
+    <article className={styles.card} data-expanded={expanded} data-selected={selected}>
       <button
         type="button"
         className={styles.cardButton}
-        onClick={() => setExpanded((current) => !current)}
+        onClick={() => {
+          if (selectable) {
+            onSelect?.()
+            setExpanded(true)
+            return
+          }
+
+          setExpanded((current) => !current)
+        }}
         aria-expanded={expanded}
         aria-controls={detailsId}
       >
@@ -133,6 +149,11 @@ function CompanyResultCard({
               <span className={styles.scoreValue}>{provider.score}</span>
               <span className={styles.scoreLabel}>match</span>
             </span>
+            {selectable && (
+              <span className={styles.selectionPill}>
+                {selected ? "Selected" : "Select"}
+              </span>
+            )}
             <span className={styles.chevronWrap} aria-hidden="true">
               <ChevronRight className={styles.chevron} strokeWidth={2.2} />
             </span>
@@ -223,7 +244,17 @@ function CompanyResultCard({
   );
 }
 
-export function ProviderListPanel({ providers }: { providers: RankedProvider[] }) {
+export function ProviderListPanel({
+  defaultExpandedFirst = true,
+  onSelect,
+  providers,
+  selectedIndex,
+}: {
+  defaultExpandedFirst?: boolean
+  onSelect?: (provider: RankedProvider, index: number) => void
+  providers: RankedProvider[]
+  selectedIndex?: number | null
+}) {
   const hydratedProviders = useMemo(
     () =>
       providers.map((provider) => ({
@@ -242,8 +273,12 @@ export function ProviderListPanel({ providers }: { providers: RankedProvider[] }
         {hydratedProviders.map((provider, index) => (
           <CompanyResultCard
             key={`${provider.url}-${index}`}
+            defaultExpanded={defaultExpandedFirst && index === 0}
             index={index}
+            onSelect={() => onSelect?.(provider, index)}
             provider={provider}
+            selectable={Boolean(onSelect)}
+            selected={selectedIndex === index}
           />
         ))}
       </div>
