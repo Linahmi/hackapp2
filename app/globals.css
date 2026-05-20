@@ -193,4 +193,6 @@
     .dark .model-icon {
         filter: grayscale(1) invert(1) brightness(0.85);
     }
+
+    
 }

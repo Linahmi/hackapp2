@@ -1,12 +1,14 @@
 import {
   createEmptyProcurementExtraction,
   extractProcurementRequirements,
+  procurementFieldSchema,
 } from "@/lib/procurement-extraction"
 import { z } from "zod"
 
 const requestSchema = z
   .object({
     prompt: z.string().max(6000),
+    unresolvedFields: z.array(procurementFieldSchema).optional(),
   })
   .strict()
 
@@ -39,7 +41,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const extraction = await extractProcurementRequirements(prompt)
+    const extraction = await extractProcurementRequirements(
+      prompt,
+      parsed.data.unresolvedFields
+    )
     return Response.json(extraction)
   } catch (error) {
     console.error("Procurement extraction failed", error)

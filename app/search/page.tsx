@@ -9,12 +9,13 @@ import { mastra } from "@/mastra";
 import { SearchResults } from "./search-results";
 
 interface Props {
-  searchParams: Promise<{ q?: string; id?: string }>;
+  searchParams: Promise<{ q?: string; id?: string; mode?: string }>;
 }
 
 export default async function SearchPage({ searchParams }: Props) {
-  const { q, id } = await searchParams;
+  const { q, id, mode } = await searchParams;
   const query = q?.trim() ?? "";
+  const searchMode = mode === "procurement" ? "procurement" : "chat";
 
   if (!query) {
     return (
@@ -26,25 +27,28 @@ export default async function SearchPage({ searchParams }: Props) {
 
   if (!id) {
     const newId = crypto.randomUUID();
-    redirect(`/search?id=${newId}&q=${encodeURIComponent(query)}`);
+    const modeParam = searchMode === "procurement" ? "&mode=procurement" : "";
+    redirect(`/search?id=${newId}&q=${encodeURIComponent(query)}${modeParam}`);
   }
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  const resourceId = getChatResourceId(session?.user?.id);
-
-  const memory = await mastra.getAgentById("procurement-agent").getMemory();
   let initialMessages: UIMessage[] = [];
 
-  if (memory) {
-    try {
-      const recalled = await memory.recall({
-        threadId: id,
-        resourceId,
-        perPage: false,
-      });
-      initialMessages = toAISdkV5Messages(recalled.messages) as unknown as UIMessage[];
-    } catch {
-      initialMessages = [];
+  if (searchMode !== "procurement") {
+    const session = await auth.api.getSession({ headers: await headers() });
+    const resourceId = getChatResourceId(session?.user?.id);
+    const memory = await mastra.getAgentById("procurement-agent").getMemory();
+
+    if (memory) {
+      try {
+        const recalled = await memory.recall({
+          threadId: id,
+          resourceId,
+          perPage: false,
+        });
+        initialMessages = toAISdkV5Messages(recalled.messages) as unknown as UIMessage[];
+      } catch {
+        initialMessages = [];
+      }
     }
   }
 
@@ -54,10 +58,10 @@ export default async function SearchPage({ searchParams }: Props) {
         <SearchResults
           chatId={id}
           query={query}
+          mode={searchMode}
           initialMessages={initialMessages}
         />
       </div>
     </main>
   );
 }
-

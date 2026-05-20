@@ -83,6 +83,17 @@ const detectedFieldSchema = z
   })
   .strict()
 
+const sourceSpanSchema = z
+  .object({
+    field: procurementFieldSchema,
+    value: z.union([z.string(), z.number()]),
+    text: z.string(),
+    start: z.number().int().min(0),
+    end: z.number().int().min(0),
+    confidence: confidenceSchema,
+  })
+  .strict()
+
 export const procurementRequirementExtractionSchema = z
   .object({
     resourceType: z.string().nullable(),
@@ -94,6 +105,7 @@ export const procurementRequirementExtractionSchema = z
     priority: z.string().nullable(),
     constraints: z.array(z.string()),
     detectedFields: z.array(detectedFieldSchema),
+    sourceSpans: z.array(sourceSpanSchema),
     missingFields: z.array(procurementFieldSchema),
     confidence: confidenceMapSchema,
     normalizedValues: normalizedValuesSchema,
@@ -234,8 +246,40 @@ function buildDetectedFields(
   return fields
 }
 
+function normalizeSourceSpans(
+  sourceSpans: ProcurementRequirementExtraction["sourceSpans"],
+  sourceText?: string
+) {
+  return sourceSpans
+    .map((span) => {
+      if (!sourceText) return span
+
+      const expectedText = sourceText.slice(span.start, span.end)
+
+      if (expectedText === span.text) return span
+
+      const exactStart = sourceText.indexOf(span.text)
+
+      if (exactStart >= 0) {
+        return {
+          ...span,
+          start: exactStart,
+          end: exactStart + span.text.length,
+        }
+      }
+
+      return span
+    })
+    .filter((span) => {
+      if (span.start >= span.end) return false
+      if (!sourceText) return true
+      return span.end <= sourceText.length && sourceText.slice(span.start, span.end) === span.text
+    })
+}
+
 function normalizeExtraction(
-  extraction: ProcurementRequirementExtraction
+  extraction: ProcurementRequirementExtraction,
+  sourceText?: string
 ): ProcurementRequirementExtraction {
   const normalizedValues = normalizeValues(extraction)
   const missingFields = requiredProcurementFieldKeys.filter(
@@ -253,6 +297,7 @@ function normalizeExtraction(
     location: cleanString(extraction.location),
     priority: cleanString(extraction.priority),
     constraints: cleanList(extraction.constraints),
+    sourceSpans: normalizeSourceSpans(extraction.sourceSpans, sourceText),
     normalizedValues,
     detectedFields: buildDetectedFields(normalizedValues, extraction.confidence),
     missingFields,
@@ -273,6 +318,7 @@ export function createEmptyProcurementExtraction(): ProcurementRequirementExtrac
     priority: null,
     constraints: [],
     detectedFields: [],
+    sourceSpans: [],
     missingFields: [],
     confidence: {
       resourceType: 0,
@@ -300,7 +346,10 @@ export function createEmptyProcurementExtraction(): ProcurementRequirementExtrac
   }
 }
 
-export async function extractProcurementRequirements(prompt: string) {
+export async function extractProcurementRequirements(
+  prompt: string,
+  targetFields?: ProcurementFieldKey[]
+) {
   const trimmedPrompt = prompt.trim()
 
   if (!trimmedPrompt) {
@@ -308,6 +357,9 @@ export async function extractProcurementRequirements(prompt: string) {
   }
 
   const today = new Date().toISOString().slice(0, 10)
+  const targetFieldInstruction = targetFields?.length
+    ? `Prioritize these unresolved fields, but still return any other clearly detected fields: ${targetFields.join(", ")}.`
+    : "Extract every clearly detected procurement field."
   let lastError: unknown
 
   for (const modelId of extractionModelIds) {
@@ -332,7 +384,9 @@ Use confidence below ${MIN_READY_CONFIDENCE} when a field is ambiguous.
 Normalize dates relative to ${today} when the user gives a clear relative date.
 Budget can be total or per-unit. Technical specifications include RAM, CPU, storage, screen size, OS, warranty specs, networking, capacity, or similar product requirements.
 Constraints are optional and include brand preferences, warranty terms, supplier region, sustainability, refurbished/new, compliance, or sourcing constraints.
-Required fields for submission are resourceType, quantity, budget, deliveryDate, specifications, location, and priority. Constraints should be detected when present but are not required.`,
+Required fields for submission are resourceType, quantity, budget, deliveryDate, specifications, location, and priority. Constraints should be detected when present but are not required.
+${targetFieldInstruction}
+Return sourceSpans for each detected field. Each source span must use exact text copied from the user prompt and start/end character offsets relative to the user prompt string. start is inclusive and end is exclusive. If you cannot identify an exact source text span, omit that source span.`,
         prompt: trimmedPrompt,
         providerOptions: {
           google: {
@@ -342,7 +396,7 @@ Required fields for submission are resourceType, quantity, budget, deliveryDate,
       })
 
       const parsed = procurementRequirementExtractionSchema.parse(output)
-      return normalizeExtraction(parsed)
+      return normalizeExtraction(parsed, trimmedPrompt)
     } catch (error) {
       lastError = error
     }
