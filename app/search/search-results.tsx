@@ -307,14 +307,25 @@ function procurementProviders(response: ProcurementSearchResponse): Provider[] {
     const warnings = result.warnings.length
       ? ` Warnings: ${result.warnings.slice(0, 2).join(" ")}`
       : ""
+    const metrics = result.metrics
+      ? [
+          { label: "Resource", value: result.metrics.resourceFit },
+          { label: "Specs", value: result.metrics.specificationFit },
+          { label: "Location", value: result.metrics.locationFit },
+          { label: "Bulk", value: result.metrics.bulkFit },
+          { label: "Delivery", value: result.metrics.deliveryFit },
+          { label: "Reliability", value: result.metrics.reliability },
+        ]
+      : undefined
 
     return {
       matchedFields: result.matchedFields.map(fieldLabel),
-      name: result.supplierName || result.title,
+      metrics,
+      name: result.companyName || result.supplierName || result.title,
       reasoning: `${result.snippet || result.title}${
         matched ? ` Matched: ${matched}.` : ""
       }${warnings}`,
-      score: Math.round(result.estimatedFit * 100),
+      score: result.score ?? Math.round(result.estimatedFit * 100),
       snippet: result.snippet || result.title,
       url: result.url,
       warnings: result.warnings,

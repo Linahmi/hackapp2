@@ -19,12 +19,17 @@ export type ProcurementSearchPayload = {
   detectedFields: ProcurementRequirementExtraction["detectedFields"]
   fields: Partial<{
     budget: ProcurementSearchPayloadField<number> & {
+      amount?: number
       budgetType: "total" | "per_unit" | "unknown"
       currency?: string | null
     }
     constraints: ProcurementSearchPayloadField<string[]>
     deliveryDate: ProcurementSearchPayloadField<string>
-    location: ProcurementSearchPayloadField<string>
+    location: ProcurementSearchPayloadField<string> & {
+      country?: string | null
+      region?: string | null
+      validatedBy?: string | null
+    }
     priority: ProcurementSearchPayloadField<string>
     quantity: ProcurementSearchPayloadField<number>
     resourceType: ProcurementSearchPayloadField<string>
@@ -58,15 +63,38 @@ export type ProcurementSearchResponse = {
     deliveryDate?: string
     ignoredFields: ProcurementFieldKey[]
     location?: string
+    locationCountry?: string
+    locationRegion?: string
+    locationValidatedBy?: string
     priority?: "low" | "medium" | "high"
     quantity?: number
     resourceType?: string
     specifications: string[]
   }
   queryUsed: string
+  queryVariants?: string[]
   results: {
+    companyName?: string
+    domain?: string
     estimatedFit: number
+    links?: {
+      contact?: string
+      product?: string
+      quote?: string
+      website: string
+    }
     matchedFields: ProcurementFieldKey[]
+    metrics?: {
+      budgetFit: number
+      bulkFit: number
+      complianceFit: number
+      deliveryFit: number
+      locationFit: number
+      reliability: number
+      resourceFit: number
+      specificationFit: number
+    }
+    score?: number
     snippet: string
     supplierName: string
     title: string

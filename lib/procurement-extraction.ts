@@ -1,6 +1,7 @@
 import { google } from "@ai-sdk/google"
 import { generateText, Output } from "ai"
 import { z } from "zod"
+import { validateLocationCandidate } from "@/lib/procurement-location-validation"
 
 export const procurementFieldKeys = [
   "resourceType",
@@ -14,7 +15,7 @@ export const procurementFieldKeys = [
 ] as const
 
 export const requiredProcurementFieldKeys = procurementFieldKeys.filter(
-  (field) => field !== "constraints" && field !== "specifications" && field !== "priority"
+  (field) => field !== "constraints"
 )
 
 export const procurementFieldSchema = z.enum(procurementFieldKeys)
@@ -91,6 +92,9 @@ const sourceSpanSchema = z
     start: z.number().int().min(0),
     end: z.number().int().min(0),
     confidence: confidenceSchema,
+    country: z.string().optional(),
+    region: z.string().optional(),
+    validatedBy: z.literal("gazetteer").optional(),
   })
   .strict()
 
@@ -121,11 +125,14 @@ export type ProcurementRequirementExtraction = z.infer<
 >
 
 const MIN_READY_CONFIDENCE = 0.55
-const extractionModelIds = [
-  "gemini-2.5-flash-lite",
+export type ProcurementExtractionMode = "fast" | "fallback" | "verify"
+
+const fallbackParserModelIds = [
+  process.env.PROCUREMENT_FALLBACK_PARSER_MODEL,
   "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-flash-lite",
   "gemini-flash-lite-latest",
-] as const
+].filter(Boolean) as string[]
 
 const fieldLabels: Record<ProcurementFieldKey, string> = {
   resourceType: "Resource type",
@@ -277,13 +284,72 @@ function normalizeSourceSpans(
     })
 }
 
+function validateLocation(
+  extraction: ProcurementRequirementExtraction
+): ProcurementRequirementExtraction {
+  const location = cleanString(extraction.location) ?? cleanString(extraction.normalizedValues.location)
+  if (!location) return extraction
+
+  const locationSpan = extraction.sourceSpans
+    .filter((span) => span.field === "location")
+    .sort((a, b) => b.confidence - a.confidence || b.text.length - a.text.length)[0]
+  const validation = validateLocationCandidate(locationSpan?.text ?? location)
+
+  if (!validation) {
+    return {
+      ...extraction,
+      location: null,
+      sourceSpans: extraction.sourceSpans.filter((span) => span.field !== "location"),
+      confidence: {
+        ...extraction.confidence,
+        location: 0,
+      },
+      normalizedValues: {
+        ...extraction.normalizedValues,
+        location: null,
+      },
+    }
+  }
+
+  const combinedConfidence = Math.min(
+    1,
+    Math.max(extraction.confidence.location, locationSpan?.confidence ?? 0) * validation.confidence
+  )
+
+  return {
+    ...extraction,
+    location: validation.name,
+    sourceSpans: extraction.sourceSpans.map((span) =>
+      span.field === "location"
+        ? {
+            ...span,
+            country: validation.country,
+            region: validation.region,
+            validatedBy: validation.validatedBy,
+            value: validation.name,
+            confidence: Math.min(span.confidence, combinedConfidence),
+          }
+        : span
+    ),
+    confidence: {
+      ...extraction.confidence,
+      location: combinedConfidence,
+    },
+    normalizedValues: {
+      ...extraction.normalizedValues,
+      location: validation.name,
+    },
+  }
+}
+
 function normalizeExtraction(
   extraction: ProcurementRequirementExtraction,
   sourceText?: string
 ): ProcurementRequirementExtraction {
-  const normalizedValues = normalizeValues(extraction)
+  const locationValidatedExtraction = validateLocation(extraction)
+  const normalizedValues = normalizeValues(locationValidatedExtraction)
   const missingFields = requiredProcurementFieldKeys.filter(
-    (field) => !hasRequiredField(field, normalizedValues, extraction.confidence)
+    (field) => !hasRequiredField(field, normalizedValues, locationValidatedExtraction.confidence)
   )
   const completedFields = requiredProcurementFieldKeys.length - missingFields.length
   const completionPercentage = Math.round(
@@ -291,20 +357,129 @@ function normalizeExtraction(
   )
 
   return {
-    ...extraction,
-    resourceType: cleanString(extraction.resourceType),
-    specifications: cleanList(extraction.specifications),
-    location: cleanString(extraction.location),
-    priority: cleanString(extraction.priority),
-    constraints: cleanList(extraction.constraints),
-    sourceSpans: normalizeSourceSpans(extraction.sourceSpans, sourceText),
+    ...locationValidatedExtraction,
+    resourceType: cleanString(locationValidatedExtraction.resourceType),
+    specifications: cleanList(locationValidatedExtraction.specifications),
+    location: cleanString(locationValidatedExtraction.location),
+    priority: cleanString(locationValidatedExtraction.priority),
+    constraints: cleanList(locationValidatedExtraction.constraints),
+    sourceSpans: normalizeSourceSpans(locationValidatedExtraction.sourceSpans, sourceText),
     normalizedValues,
-    detectedFields: buildDetectedFields(normalizedValues, extraction.confidence),
+    detectedFields: buildDetectedFields(normalizedValues, locationValidatedExtraction.confidence),
     missingFields,
     completionPercentage,
     readyToSubmit: missingFields.length === 0,
     followUpSuggestions: missingFields.slice(0, 3).map((field) => followUpQuestions[field]),
   }
+}
+
+async function extractWithFastSlmEndpoint(
+  prompt: string,
+  targetFields: ProcurementFieldKey[] | undefined,
+  today: string
+) {
+  const endpoint = process.env.PROCUREMENT_FAST_SLM_ENDPOINT
+  if (!endpoint) return null
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 900)
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.PROCUREMENT_FAST_SLM_API_KEY
+          ? { Authorization: `Bearer ${process.env.PROCUREMENT_FAST_SLM_API_KEY}` }
+          : {}),
+      },
+      body: JSON.stringify({
+        schema: "procurement_requirement_extraction.v1",
+        prompt,
+        targetFields,
+        today,
+        requiredFields: requiredProcurementFieldKeys,
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Fast parser returned ${response.status}`)
+    }
+
+    const body = await response.json()
+    return procurementRequirementExtractionSchema.parse(body)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function modelIdsForMode(mode: ProcurementExtractionMode) {
+  if (mode === "fast") return []
+  return fallbackParserModelIds
+}
+
+async function extractWithHostedStructuredModel({
+  mode,
+  prompt,
+  targetFields,
+  today,
+}: {
+  mode: ProcurementExtractionMode
+  prompt: string
+  targetFields?: ProcurementFieldKey[]
+  today: string
+}) {
+  const targetFieldInstruction = targetFields?.length
+    ? `Prioritize these unresolved or uncertain fields, but still return any other clearly detected fields: ${targetFields.join(", ")}.`
+    : "Extract every clearly detected procurement field."
+  let lastError: unknown
+
+  for (const modelId of modelIdsForMode(mode)) {
+    try {
+      const { output } = await generateText({
+        model: google(modelId),
+        temperature: 0,
+        maxRetries: 1,
+        maxOutputTokens: mode === "fast" ? 900 : 1400,
+        output: Output.object({
+          schema: procurementRequirementExtractionSchema,
+          name: "procurement_requirement_extraction",
+          description:
+            "Reasoning-free structured procurement slot extraction with values, source spans, confidence, and readiness.",
+        }),
+        system: `You are a procurement slot-filling parser. Return strict JSON only through the schema.
+
+Use language understanding, not keyword matching. Interpret the user's procurement intent in context.
+Use only the user's prompt. Do not fabricate missing information.
+Set absent fields to null or [] with confidence 0.
+Use confidence below ${MIN_READY_CONFIDENCE} when a field is ambiguous.
+Normalize clear relative dates against ${today}; "tomorrow" should become an ISO date.
+Budget examples: "40000$", "$40k", "3000 dollars" are budget, not quantity.
+Quantity examples: "3000 rtx2080 computers" means quantity 3000, specifications RTX 2080, resourceType computers.
+Technical specifications include CPU, GPU, RAM, storage, screen size, OS, model numbers, warranty specs, networking, capacity, or similar product requirements.
+Priority/urgency includes language such as really fast, urgent, ASAP, critical, low priority, or normal priority.
+Location must be a real city, country, region, or explicit delivery destination. Do not classify arbitrary capitalized words, product names, artists, brands, or model names as locations. If unsure, omit location or use confidence below ${MIN_READY_CONFIDENCE}.
+Constraints are optional and include brand preferences, warranty terms, supplier region, sustainability, refurbished/new, compliance, or sourcing constraints.
+Required fields for submission are resourceType, quantity, budget, deliveryDate, specifications, location, and priority. Constraints should be detected when present but are not required.
+${targetFieldInstruction}
+Return sourceSpans for each detected field. Each source span must use exact text copied from the user prompt and start/end character offsets relative to the prompt string. start is inclusive and end is exclusive. If you cannot identify an exact source span, omit that span.
+Return no chain-of-thought, no explanations, and no fields outside the schema.`,
+        prompt,
+        providerOptions: {
+          google: {
+            structuredOutputs: true,
+          },
+        },
+      })
+
+      return procurementRequirementExtractionSchema.parse(output)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError
 }
 
 export function createEmptyProcurementExtraction(): ProcurementRequirementExtraction {
@@ -348,7 +523,8 @@ export function createEmptyProcurementExtraction(): ProcurementRequirementExtrac
 
 export async function extractProcurementRequirements(
   prompt: string,
-  targetFields?: ProcurementFieldKey[]
+  targetFields?: ProcurementFieldKey[],
+  options: { mode?: ProcurementExtractionMode } = {}
 ) {
   const trimmedPrompt = prompt.trim()
 
@@ -357,50 +533,25 @@ export async function extractProcurementRequirements(
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const targetFieldInstruction = targetFields?.length
-    ? `Prioritize these unresolved fields, but still return any other clearly detected fields: ${targetFields.join(", ")}.`
-    : "Extract every clearly detected procurement field."
-  let lastError: unknown
+  const mode = options.mode ?? "fast"
 
-  for (const modelId of extractionModelIds) {
+  if (mode === "fast") {
     try {
-      const { output } = await generateText({
-        model: google(modelId),
-        temperature: 0,
-        maxRetries: 1,
-        maxOutputTokens: 1400,
-        output: Output.object({
-          schema: procurementRequirementExtractionSchema,
-          name: "procurement_requirement_extraction",
-          description:
-            "Structured procurement requirement extraction with detected values, missing required fields, confidence, and readiness.",
-        }),
-        system: `You extract procurement requirements from a user's free-text request.
-
-Return JSON that exactly matches the schema.
-Use only the user's prompt. Do not fabricate missing information.
-Set absent fields to null or [] with confidence 0.
-Use confidence below ${MIN_READY_CONFIDENCE} when a field is ambiguous.
-Normalize dates relative to ${today} when the user gives a clear relative date.
-Budget can be total or per-unit. Technical specifications include RAM, CPU, storage, screen size, OS, warranty specs, networking, capacity, or similar product requirements.
-Constraints are optional and include brand preferences, warranty terms, supplier region, sustainability, refurbished/new, compliance, or sourcing constraints.
-Required fields for submission are resourceType, quantity, budget, deliveryDate, specifications, location, and priority. Constraints should be detected when present but are not required.
-${targetFieldInstruction}
-Return sourceSpans for each detected field. Each source span must use exact text copied from the user prompt and start/end character offsets relative to the user prompt string. start is inclusive and end is exclusive. If you cannot identify an exact source text span, omit that source span.`,
-        prompt: trimmedPrompt,
-        providerOptions: {
-          google: {
-            structuredOutputs: true,
-          },
-        },
-      })
-
-      const parsed = procurementRequirementExtractionSchema.parse(output)
-      return normalizeExtraction(parsed, trimmedPrompt)
+      const fastParsed = await extractWithFastSlmEndpoint(trimmedPrompt, targetFields, today)
+      if (fastParsed) return normalizeExtraction(fastParsed, trimmedPrompt)
     } catch (error) {
-      lastError = error
+      console.warn("Fast procurement SLM parser failed", error)
     }
+
+    return normalizeExtraction(createEmptyProcurementExtraction(), trimmedPrompt)
   }
 
-  throw lastError
+  const parsed = await extractWithHostedStructuredModel({
+    mode,
+    prompt: trimmedPrompt,
+    targetFields,
+    today,
+  })
+
+  return normalizeExtraction(parsed, trimmedPrompt)
 }

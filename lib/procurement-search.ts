@@ -9,6 +9,7 @@ import {
 
 const MIN_CRITICAL_CONFIDENCE = 0.55
 const DEFAULT_RESULT_COUNT = 8
+const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000
 
 const confidenceSchema = z.number().min(0).max(1)
 
@@ -35,9 +36,25 @@ const numberFieldSchema = z
 const budgetFieldSchema = z
   .object({
     ...baseFieldSchema,
+    amount: z.number().positive().optional(),
     budgetType: z.enum(["total", "per_unit", "unknown"]).optional(),
     currency: z.string().nullable().optional(),
-    value: z.number().positive(),
+    value: z.number().positive().optional(),
+  })
+  .strict()
+  .refine((value) => typeof value.value === "number" || typeof value.amount === "number", {
+    message: "Budget amount is required",
+  })
+  .transform((value) => ({
+    ...value,
+    value: value.value ?? value.amount ?? 0,
+  }))
+
+const locationFieldSchema = textFieldSchema
+  .extend({
+    country: z.string().nullable().optional(),
+    region: z.string().nullable().optional(),
+    validatedBy: z.string().nullable().optional(),
   })
   .strict()
 
@@ -56,7 +73,7 @@ const fieldsSchema = z
     budget: budgetFieldSchema.optional(),
     deliveryDate: textFieldSchema.optional(),
     specifications: listFieldSchema.optional(),
-    location: textFieldSchema.optional(),
+    location: locationFieldSchema.optional(),
     priority: textFieldSchema.optional(),
     constraints: listFieldSchema.optional(),
   })
@@ -121,15 +138,39 @@ export type NormalizedProcurementRequest = {
   deliveryDate?: string
   ignoredFields: ProcurementFieldKey[]
   location?: string
+  locationCountry?: string
+  locationRegion?: string
+  locationValidatedBy?: string
   priority?: "low" | "medium" | "high"
   quantity?: number
   resourceType?: string
   specifications: string[]
 }
 
+export type ProcurementSearchMetrics = {
+  budgetFit: number
+  bulkFit: number
+  complianceFit: number
+  deliveryFit: number
+  locationFit: number
+  reliability: number
+  resourceFit: number
+  specificationFit: number
+}
+
 export type ProcurementSupplierResult = {
+  companyName: string
+  domain: string
   estimatedFit: number
+  links: {
+    contact?: string
+    product?: string
+    quote?: string
+    website: string
+  }
   matchedFields: ProcurementFieldKey[]
+  metrics: ProcurementSearchMetrics
+  score: number
   snippet: string
   supplierName: string
   title: string
@@ -144,6 +185,7 @@ export type ProcurementSearchResponse = {
   }
   normalizedRequest: NormalizedProcurementRequest
   queryUsed: string
+  queryVariants: string[]
   results: ProcurementSupplierResult[]
   warnings: string[]
 }
@@ -155,6 +197,11 @@ type ExaResult = {
   title: string | null
   url: string
 }
+
+const procurementSearchCache = new Map<
+  string,
+  { expiresAt: number; response: ProcurementSearchResponse }
+>()
 
 function uniqueValues<T>(values: T[]) {
   return [...new Set(values)]
@@ -292,10 +339,40 @@ function hasRequiredField(
 }
 
 function validateReadyRequest(request: ProcurementSearchRequest) {
-  // Only block if we have no idea what to search for
-  if (!request.fields.resourceType?.value) {
-    return "Please describe what you need — for example: '50 laptops', 'PCR reagents', 'HVAC filters'."
+  if (!request.readyToSubmit) {
+    return "The procurement request is not complete enough to search."
   }
+
+  const enabledRequiredFields = requiredProcurementFieldKeys.filter(
+    (field) => !request.ignoredFields.includes(field)
+  )
+  const missingFields = enabledRequiredFields.filter(
+    (field) => !hasRequiredField(request.fields, field)
+  )
+
+  if (missingFields.length > 0) {
+    return `Missing required procurement fields: ${missingFields.join(", ")}.`
+  }
+
+  const lowConfidenceFields = enabledRequiredFields.filter((field) => {
+    const value = request.fields[field]
+    return value ? value.confidence < MIN_CRITICAL_CONFIDENCE : false
+  })
+
+  if (lowConfidenceFields.length > 0) {
+    return `Confidence is too low for: ${lowConfidenceFields.join(", ")}.`
+  }
+
+  const location = request.fields.location
+  if (
+    location &&
+    !request.ignoredFields.includes("location") &&
+    location.validatedBy !== "slm+location_index" &&
+    location.validatedBy !== "gazetteer"
+  ) {
+    return "Location must be validated by the location index before supplier search."
+  }
+
   return null
 }
 
@@ -350,8 +427,20 @@ function normalizeRequest(request: ProcurementSearchRequest): {
     normalized.deliveryDate = normalizedDate
   }
 
-  if (fields.location && !ignoredFields.includes("location")) {
+  if (
+    fields.location &&
+    !ignoredFields.includes("location") &&
+    (fields.location.validatedBy === "slm+location_index" ||
+      fields.location.validatedBy === "gazetteer")
+  ) {
     normalized.location = toTitleCase(fields.location.value)
+    normalized.locationCountry = fields.location.country
+      ? toTitleCase(fields.location.country)
+      : undefined
+    normalized.locationRegion = fields.location.region
+      ? toTitleCase(fields.location.region)
+      : undefined
+    normalized.locationValidatedBy = fields.location.validatedBy
   }
 
   if (fields.priority && !ignoredFields.includes("priority")) {
@@ -370,23 +459,100 @@ function searchableSpecs(specifications: string[]) {
   )
 }
 
-function buildExaQuery(request: NormalizedProcurementRequest) {
-  const parts = [
-    "bulk supplier",
-    request.quantity?.toString(),
-    ...searchableSpecs(request.specifications),
-    request.resourceType,
-    request.location,
-    request.deliveryDate ? `delivery by ${request.deliveryDate}` : null,
-    request.budget
-      ? `budget ${request.budget.amount} ${request.budget.currency}`
-      : null,
-    request.priority === "high" ? "urgent enterprise procurement" : "enterprise procurement",
-    ...request.constraints,
-    "B2B distributor wholesale catalog quote",
-  ]
+function compactText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "")
+}
 
-  return parts.filter(Boolean).join(" ")
+function normalizeDomain(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url
+  }
+}
+
+function originFromUrl(url: string) {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.protocol}//${parsed.hostname}`
+  } catch {
+    return url
+  }
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return uniqueValues(values.map((value) => value?.trim()).filter(Boolean) as string[])
+}
+
+function locationTerms(request: NormalizedProcurementRequest) {
+  return uniqueStrings([
+    request.location,
+    request.locationRegion,
+    request.locationCountry,
+  ])
+}
+
+function constraintQueryTerms(request: NormalizedProcurementRequest) {
+  return request.constraints
+    .filter((constraint) => constraint.length <= 80)
+    .slice(0, 4)
+}
+
+function buildExaQueryVariants(request: NormalizedProcurementRequest) {
+  const specs = searchableSpecs(request.specifications)
+  const specText = specs.join(" ")
+  const resource = request.resourceType ?? "business equipment"
+  const quantity = request.quantity ? request.quantity.toLocaleString("en-US", { useGrouping: false }) : ""
+  const location = locationTerms(request).join(" ")
+  const cityOrCountry = request.location ?? request.locationCountry ?? ""
+  const country = request.locationCountry ?? request.location ?? ""
+  const urgency = request.priority === "high" ? "urgent delivery" : "delivery"
+  const constraints = constraintQueryTerms(request).join(" ")
+  const delivery = request.deliveryDate ? `delivery by ${request.deliveryDate}` : "delivery"
+
+  return uniqueStrings([
+    [
+      "bulk supplier",
+      quantity,
+      specText,
+      resource,
+      location,
+      urgency,
+      delivery,
+      "enterprise procurement distributor wholesale quote",
+      constraints,
+    ].join(" "),
+    [
+      "B2B",
+      resource,
+      "distributor",
+      country,
+      specText,
+      "bulk order request quote product availability",
+      constraints,
+    ].join(" "),
+    [
+      "IT equipment reseller",
+      cityOrCountry,
+      "business",
+      resource,
+      "wholesale catalog quote sales contact",
+      constraints,
+    ].join(" "),
+    [
+      "enterprise hardware supplier",
+      country,
+      request.priority === "high" ? "urgent delivery" : "delivery",
+      resource,
+      specText,
+      "B2B procurement catalog",
+      constraints,
+    ].join(" "),
+  ]).slice(0, 4)
+}
+
+function buildExaQuery(request: NormalizedProcurementRequest) {
+  return buildExaQueryVariants(request)[0] ?? "enterprise procurement supplier quote"
 }
 
 function buildWarnings(request: NormalizedProcurementRequest) {
@@ -403,7 +569,8 @@ function buildWarnings(request: NormalizedProcurementRequest) {
 
   if (
     unitBudget !== null &&
-    ((resourceType.includes("computer") && unitBudget < 250) ||
+    ((request.specifications.some((spec) => /rtx|gpu|nvidia|graphics/i.test(spec)) && unitBudget < 500) ||
+      (resourceType.includes("computer") && unitBudget < 250) ||
       (resourceType.includes("laptop") && unitBudget < 300) ||
       (resourceType.includes("server") && unitBudget < 1000) ||
       (resourceType.includes("monitor") && unitBudget < 75))
@@ -432,6 +599,22 @@ function resultSnippet(result: ExaResult) {
   return `${cleaned.slice(0, 257)}...`
 }
 
+function linkHints(url: string) {
+  const lower = url.toLowerCase()
+  return {
+    contact: lower.includes("contact") ? url : undefined,
+    product:
+      lower.includes("product") || lower.includes("catalog") || lower.includes("shop")
+        ? url
+        : undefined,
+    quote:
+      lower.includes("quote") || lower.includes("quotation") || lower.includes("rfq")
+        ? url
+        : undefined,
+    website: originFromUrl(url),
+  }
+}
+
 function supplierNameFromResult(result: ExaResult) {
   try {
     const hostname = new URL(result.url).hostname.replace(/^www\./, "")
@@ -442,9 +625,162 @@ function supplierNameFromResult(result: ExaResult) {
   }
 }
 
-function textMatches(haystack: string, needle: string) {
+function textMatches(haystack: string, needle: string, mode: "any" | "all" = "any") {
   const normalizedHaystack = haystack.toLowerCase()
-  return words(needle).some((word) => word.length > 1 && normalizedHaystack.includes(word))
+  const compactHaystack = compactText(haystack)
+  const normalizedNeedle = needle.toLowerCase()
+  const terms = words(needle).filter((word) => word.length > 1)
+
+  if (!terms.length) return false
+  if (normalizedHaystack.includes(normalizedNeedle) || compactHaystack.includes(compactText(needle))) {
+    return true
+  }
+
+  const matches = terms.filter((word) => {
+    const singular = word.endsWith("s") ? word.slice(0, -1) : word
+    return normalizedHaystack.includes(word) || normalizedHaystack.includes(singular)
+  })
+
+  return mode === "all" ? matches.length === terms.length : matches.length > 0
+}
+
+function hasAnyTerm(content: string, terms: string[]) {
+  return terms.some((term) => content.includes(term))
+}
+
+function metricFromMatches(total: number, matched: number, emptyValue = 0.5) {
+  if (total <= 0) return emptyValue
+  return Math.min(1, Math.max(0, matched / total))
+}
+
+function negativeContentSignal(content: string) {
+  return hasAnyTerm(content, [
+    "blog",
+    "review",
+    "forum",
+    "reddit",
+    "news",
+    "article",
+    "how to",
+    "guide",
+    "benchmark",
+  ])
+}
+
+function procurementIntentSignal(content: string) {
+  return hasAnyTerm(content, [
+    "supplier",
+    "distributor",
+    "reseller",
+    "wholesale",
+    "enterprise",
+    "business",
+    "b2b",
+    "procurement",
+    "quote",
+    "quotation",
+    "rfq",
+    "catalog",
+    "sales",
+    "availability",
+    "volume",
+  ])
+}
+
+function scoreMetrics(result: ExaResult, request: NormalizedProcurementRequest) {
+  const snippet = resultSnippet(result)
+  const content = `${result.title ?? ""} ${result.url} ${snippet} ${result.text ?? ""}`.toLowerCase()
+  const specMatches = request.specifications.filter((spec) => textMatches(content, spec, "all"))
+  const locationValues = locationTerms(request)
+  const locationMatches = locationValues.filter((term) => textMatches(content, term))
+  const resourceFit = request.resourceType
+    ? textMatches(content, request.resourceType) ||
+      hasAnyTerm(content, ["hardware", "it equipment", "computer equipment", "workstation"])
+      ? 0.9
+      : 0.2
+    : 0.5
+  const specificationFit = metricFromMatches(request.specifications.length, specMatches.length, 0.55)
+  const locationFit = metricFromMatches(locationValues.length, locationMatches.length, request.location ? 0.25 : 0.55)
+  const bulkFit = procurementIntentSignal(content) ? 0.9 : negativeContentSignal(content) ? 0.15 : 0.45
+  const budgetFit = request.budget
+    ? hasAnyTerm(content, ["price", "pricing", "quote", "quotation", "discount", "volume"])
+      ? 0.68
+      : 0.45
+    : 0.55
+  const deliveryFit = hasAnyTerm(content, [
+    "delivery",
+    "shipping",
+    "ship",
+    "availability",
+    "in stock",
+    "logistics",
+    "lead time",
+  ])
+    ? 0.78
+    : 0.42
+  const complianceFit = hasAnyTerm(content, [
+    "iso",
+    "soc 2",
+    "soc2",
+    "gdpr",
+    "hipaa",
+    "certified",
+    "warranty",
+    "compliance",
+  ])
+    ? 0.78
+    : request.constraints.some((constraint) => /iso|soc|gdpr|hipaa|warranty|compliance/i.test(constraint))
+      ? 0.3
+      : 0.52
+  const reliability = negativeContentSignal(content)
+    ? 0.18
+    : procurementIntentSignal(content)
+      ? 0.82
+      : 0.58
+
+  return {
+    budgetFit,
+    bulkFit,
+    complianceFit,
+    deliveryFit,
+    locationFit,
+    reliability,
+    resourceFit,
+    specificationFit,
+  } satisfies ProcurementSearchMetrics
+}
+
+function weightedScore(metrics: ProcurementSearchMetrics, exaScore?: number) {
+  const semanticScore = Math.max(0, Math.min(1, exaScore ?? 0.25))
+  return (
+    metrics.resourceFit * 0.19 +
+    metrics.specificationFit * 0.14 +
+    metrics.locationFit * 0.12 +
+    metrics.bulkFit * 0.17 +
+    metrics.budgetFit * 0.08 +
+    metrics.deliveryFit * 0.1 +
+    metrics.complianceFit * 0.06 +
+    metrics.reliability * 0.1 +
+    semanticScore * 0.04
+  )
+}
+
+function matchedFieldsFromMetrics(
+  metrics: ProcurementSearchMetrics,
+  request: NormalizedProcurementRequest
+) {
+  const matchedFields: ProcurementFieldKey[] = []
+
+  if (request.resourceType && metrics.resourceFit >= 0.65) matchedFields.push("resourceType")
+  if (request.specifications.length > 0 && metrics.specificationFit >= 0.65) matchedFields.push("specifications")
+  if (request.location && metrics.locationFit >= 0.65) matchedFields.push("location")
+  if (request.quantity && metrics.bulkFit >= 0.65) matchedFields.push("quantity")
+  if (request.deliveryDate && metrics.deliveryFit >= 0.65) matchedFields.push("deliveryDate")
+  if (request.budget && metrics.budgetFit >= 0.6) matchedFields.push("budget")
+  if (request.constraints.length > 0 && metrics.complianceFit >= 0.65) matchedFields.push("constraints")
+  if (request.priority && metrics.deliveryFit >= 0.65) matchedFields.push("priority")
+
+  return uniqueValues(matchedFields)
 }
 
 function scoreResult(
@@ -452,65 +788,90 @@ function scoreResult(
   request: NormalizedProcurementRequest,
   requestWarnings: string[]
 ): ProcurementSupplierResult {
-  const content = `${result.title ?? ""} ${result.url} ${resultSnippet(result)} ${result.text ?? ""}`.toLowerCase()
-  const matchedFields: ProcurementFieldKey[] = []
-  let score = Math.min(0.35, Math.max(0, result.score ?? 0.2))
-
-  if (request.resourceType && textMatches(content, request.resourceType)) {
-    matchedFields.push("resourceType")
-    score += 0.15
-  }
-
-  if (request.specifications.length > 0 && request.specifications.some((spec) => textMatches(content, spec))) {
-    matchedFields.push("specifications")
-    score += 0.15
-  }
-
-  if (request.location && textMatches(content, request.location)) {
-    matchedFields.push("location")
-    score += 0.1
-  }
-
-  if (request.quantity && content.includes(request.quantity.toString())) {
-    matchedFields.push("quantity")
-    score += 0.05
-  }
-
-  if (request.deliveryDate && content.includes(request.deliveryDate)) {
-    matchedFields.push("deliveryDate")
-    score += 0.05
-  }
-
-  if (request.budget && content.includes(request.budget.currency.toLowerCase())) {
-    matchedFields.push("budget")
-    score += 0.04
-  }
-
-  if (
-    ["supplier", "distributor", "wholesale", "enterprise", "procurement", "catalog", "quote"].some(
-      (term) => content.includes(term)
-    )
-  ) {
-    score += 0.16
-  }
+  const metrics = scoreMetrics(result, request)
+  const estimatedFit = Number(Math.min(0.99, Math.max(0.05, weightedScore(metrics, result.score))).toFixed(2))
+  const score = Math.round(estimatedFit * 100)
+  const matchedFields = matchedFieldsFromMetrics(metrics, request)
 
   const warnings = [...requestWarnings]
-  if (request.location && !matchedFields.includes("location")) {
+  if (request.location && metrics.locationFit < 0.65) {
     warnings.push("Location fit is not explicit in the result preview.")
   }
-  if (request.specifications.length > 0 && !matchedFields.includes("specifications")) {
+  if (request.specifications.length > 0 && metrics.specificationFit < 0.65) {
     warnings.push("Technical specification match is weak in the result preview.")
   }
+  if (request.deliveryDate && metrics.deliveryFit < 0.65) {
+    warnings.push("Exact delivery deadline needs provider confirmation.")
+  }
 
+  const supplierName = supplierNameFromResult(result)
   return {
-    estimatedFit: Number(Math.min(0.99, Math.max(0.05, score)).toFixed(2)),
+    companyName: supplierName,
+    domain: normalizeDomain(result.url),
+    estimatedFit,
+    links: linkHints(result.url),
     matchedFields: uniqueValues(matchedFields),
+    metrics,
+    score,
     snippet: resultSnippet(result),
-    supplierName: supplierNameFromResult(result),
-    title: result.title?.trim() || supplierNameFromResult(result),
+    supplierName,
+    title: result.title?.trim() || supplierName,
     url: result.url,
     warnings: uniqueValues(warnings),
   }
+}
+
+function procurementRelevance(result: ProcurementSupplierResult) {
+  return (
+    result.metrics.resourceFit >= 0.55 ||
+    result.metrics.bulkFit >= 0.65 ||
+    result.metrics.reliability >= 0.7
+  )
+}
+
+function dedupeResults(results: ProcurementSupplierResult[]) {
+  const byUrl = new Map<string, ProcurementSupplierResult>()
+
+  for (const result of results) {
+    const key = result.url.replace(/\/$/, "")
+    const current = byUrl.get(key)
+
+    if (!current || result.score > current.score) {
+      byUrl.set(key, result)
+    }
+  }
+
+  return [...byUrl.values()]
+}
+
+function cacheKeyForSearch(
+  request: NormalizedProcurementRequest,
+  settings: ProcurementSearchRequest["searchSettings"]
+) {
+  return JSON.stringify({
+    request,
+    resultCount: settings?.resultCount ?? DEFAULT_RESULT_COUNT,
+    searchType: settings?.searchType ?? "auto",
+  })
+}
+
+function getCachedSearch(key: string) {
+  const cached = procurementSearchCache.get(key)
+  if (!cached) return null
+
+  if (cached.expiresAt < Date.now()) {
+    procurementSearchCache.delete(key)
+    return null
+  }
+
+  return structuredClone(cached.response)
+}
+
+function setCachedSearch(key: string, response: ProcurementSearchResponse) {
+  procurementSearchCache.set(key, {
+    expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+    response: structuredClone(response),
+  })
 }
 
 export async function runProcurementSearch(
@@ -522,6 +883,12 @@ export async function runProcurementSearch(
     return { error: error ?? "Invalid procurement request.", status: 422 }
   }
 
+  const cacheKey = cacheKeyForSearch(normalized, request.searchSettings)
+  const cached = getCachedSearch(cacheKey)
+  if (cached) {
+    return { response: cached }
+  }
+
   const apiKey = process.env.EXA_API_KEY
 
   if (!apiKey) {
@@ -529,50 +896,82 @@ export async function runProcurementSearch(
   }
 
   const exa = new Exa(apiKey)
-  const query = buildExaQuery(normalized)
+  const queryVariants = buildExaQueryVariants(normalized)
+  const query = queryVariants[0] ?? buildExaQuery(normalized)
   const warnings = buildWarnings(normalized)
   const resultCount = request.searchSettings?.resultCount ?? DEFAULT_RESULT_COUNT
   const searchType = request.searchSettings?.searchType ?? "auto"
+  const perQueryResultCount = Math.min(8, Math.max(4, Math.ceil((resultCount * 2) / queryVariants.length)))
 
-  const exaResponse = await exa.search(query, {
-    contents: {
-      highlights: {
-        maxCharacters: 360,
-        query,
-      },
-      text: {
-        maxCharacters: 1600,
-      },
+  const searchResponses = await Promise.allSettled(
+    queryVariants.map((variant) =>
+      exa.search(variant, {
+        contents: {
+          highlights: {
+            maxCharacters: 360,
+            query: variant,
+          },
+          text: {
+            maxCharacters: 1800,
+          },
+        },
+        excludeText: ["forum"],
+        numResults: perQueryResultCount,
+        systemPrompt:
+          "Prefer official company pages, B2B suppliers, distributors, resellers, wholesale catalogs, enterprise procurement pages, product availability pages, request-a-quote pages, and supplier contact or sales pages. Down-rank blogs, reviews, forums, benchmark posts, news articles, and pages that only discuss products without provider intent.",
+        type: searchType,
+      })
+    )
+  )
+
+  const exaResults = searchResponses.flatMap((response) =>
+    response.status === "fulfilled" ? (response.value.results as ExaResult[]) : []
+  )
+
+  if (searchResponses.every((response) => response.status === "rejected")) {
+    throw searchResponses[0].reason
+  }
+
+  const results = dedupeResults(
+    exaResults.map((result) => scoreResult(result, normalized, warnings))
+  )
+    .filter(procurementRelevance)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, resultCount)
+
+  const response: ProcurementSearchResponse = {
+    filtersUsed: {
+      exclude: ["consumer blogs", "reviews", "forums", "news", "benchmark-only content"],
+      prefer: [
+        "official supplier pages",
+        "B2B suppliers",
+        "distributors",
+        "resellers",
+        "wholesale",
+        "enterprise procurement",
+        "product listings",
+        "quote pages",
+        "supplier catalogs",
+        "contact or sales pages",
+      ],
     },
-    excludeText: ["forum"],
-    numResults: resultCount,
-    systemPrompt:
-      "Prefer B2B suppliers, distributors, wholesale catalogs, enterprise procurement pages, product listings, quote pages, and supplier catalogs. Avoid consumer blogs, product reviews, and forums.",
-    type: searchType,
-  })
+    normalizedRequest: normalized,
+    queryUsed: query,
+    queryVariants,
+    results,
+    warnings,
+  }
 
-  const results = (exaResponse.results as ExaResult[])
-    .map((result) => scoreResult(result, normalized, warnings))
-    .sort((a, b) => b.estimatedFit - a.estimatedFit)
+  if (results.length === 0 && exaResults.length === 0) {
+    return {
+      error: "No Exa supplier results were returned for the structured procurement request.",
+      status: 404,
+    }
+  }
+
+  setCachedSearch(cacheKey, response)
 
   return {
-    response: {
-      filtersUsed: {
-        exclude: ["consumer blogs", "reviews", "forums"],
-        prefer: [
-          "B2B suppliers",
-          "distributors",
-          "wholesale",
-          "enterprise procurement",
-          "product listings",
-          "quote pages",
-          "supplier catalogs",
-        ],
-      },
-      normalizedRequest: normalized,
-      queryUsed: query,
-      results,
-      warnings,
-    },
+    response,
   }
 }

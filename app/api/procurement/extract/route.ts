@@ -7,6 +7,7 @@ import { z } from "zod"
 
 const requestSchema = z
   .object({
+    mode: z.enum(["fast", "fallback", "verify"]).optional(),
     prompt: z.string().max(6000),
     unresolvedFields: z.array(procurementFieldSchema).optional(),
   })
@@ -33,7 +34,10 @@ export async function POST(request: Request) {
     return Response.json(createEmptyProcurementExtraction())
   }
 
-  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+  if (
+    !process.env.PROCUREMENT_FAST_SLM_ENDPOINT &&
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY
+  ) {
     return Response.json(
       { error: "Requirement extraction model is not configured" },
       { status: 503 }
@@ -43,7 +47,8 @@ export async function POST(request: Request) {
   try {
     const extraction = await extractProcurementRequirements(
       prompt,
-      parsed.data.unresolvedFields
+      parsed.data.unresolvedFields,
+      { mode: parsed.data.mode ?? "fast" }
     )
     return Response.json(extraction)
   } catch (error) {

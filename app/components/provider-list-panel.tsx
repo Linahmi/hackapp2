@@ -10,6 +10,7 @@ export type RankedProvider = {
   score: number;
   reasoning: string;
   matchedFields?: string[];
+  metrics?: { label: string; value: number }[];
   snippet?: string;
   tags?: string[];
   warnings?: string[];
@@ -60,6 +61,7 @@ function CompanyResultCard({
   const snippet = provider.snippet || provider.reasoning;
   const detailsId = `provider-details-${index}`;
   const fields = provider.matchedFields ?? [];
+  const metrics = provider.metrics ?? [];
 
   return (
     <article className={styles.card} data-expanded={expanded} data-selected={selected}>
@@ -104,12 +106,11 @@ function CompanyResultCard({
           </span>
         </span>
 
-        {/* Matched procurement fields — real data from search */}
-        {fields.length > 0 && (
+        {metrics.length > 0 && (
           <span className={styles.metricGrid}>
-            {fields.map((field) => (
-              <span className={styles.metricPill} key={`${provider.url}-${field}`}>
-                {field}
+            {metrics.map((metric) => (
+              <span className={styles.metricPill} key={`${provider.url}-${metric.label}`}>
+                {metric.label} <strong>{Math.round(metric.value * 100)}%</strong>
               </span>
             ))}
           </span>
@@ -139,6 +140,20 @@ function CompanyResultCard({
                 {fields.map((field) => (
                   <span key={`${provider.url}-${field}`} className={styles.detailChip}>
                     {field}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {metrics.length > 0 && (
+            <div className={styles.detailBlock}>
+              <span className={styles.detailLabel}>Fit metrics</span>
+              <div className={styles.metricDetailGrid}>
+                {metrics.map((metric) => (
+                  <span key={`${provider.url}-${metric.label}`}>
+                    <strong>{metric.label}</strong>
+                    {Math.round(metric.value * 100)}%
                   </span>
                 ))}
               </div>

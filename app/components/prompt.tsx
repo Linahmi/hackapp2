@@ -30,8 +30,8 @@ import type {
 } from "@/lib/procurement-extraction"
 import {
   createEmptyFastExtraction,
-  extractFastProcurementSlots,
   getEnabledMissingFields,
+  getFallbackTargetFields,
   isProcurementFieldDetected,
   mergeProcurementExtractions,
   offsetExtractionSpans,
@@ -191,7 +191,7 @@ function isRequiredForSubmit(
   field: ProcurementFieldKey,
   ignoredFields: Set<ProcurementFieldKey>
 ) {
-  return field !== "constraints" && field !== "specifications" && field !== "priority" && !ignoredFields.has(field)
+  return field !== "constraints" && !ignoredFields.has(field)
 }
 
 function buildProcurementSearchPayload(
@@ -238,6 +238,7 @@ function buildProcurementSearchPayload(
 
     if (amount > 0) {
       fields.budget = {
+        amount,
         budgetType: extraction.budget.basis ?? "unknown",
         confidence: extraction.confidence.budget,
         currency: budgetCurrency(extraction.budget, budgetSpan?.text),
@@ -267,8 +268,11 @@ function buildProcurementSearchPayload(
   if (extraction.location) {
     fields.location = {
       confidence: extraction.confidence.location,
+      country: locationSpan?.country ?? null,
+      region: locationSpan?.region ?? null,
       required: isRequiredForSubmit("location", ignoredFields),
       spanText: locationSpan?.text ?? null,
+      validatedBy: locationSpan?.validatedBy ? "slm+location_index" : null,
       value: extraction.location,
     }
   }
@@ -402,6 +406,7 @@ export function AIPrompt() {
   const [extraction, setExtraction] =
     useState<ProcurementRequirementExtraction | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [extractionError, setExtractionError] = useState<string | null>(null)
   const [ignoredFields, setIgnoredFields] = useState<Set<ProcurementFieldKey>>(
     () => new Set()
@@ -422,9 +427,13 @@ export function AIPrompt() {
   const trimmedInput = rawText.trim()
   const currentExtraction = trimmedInput ? extraction : null
   const completionPercentage = currentExtraction?.completionPercentage ?? 0
-  const canSubmit = Boolean(trimmedInput && currentExtraction?.readyToSubmit)
+  const canSubmit = Boolean(trimmedInput && currentExtraction?.readyToSubmit && !isSubmitting)
   const enabledMissingFields = useMemo(
     () => getEnabledMissingFields(currentExtraction, ignoredFields),
+    [currentExtraction, ignoredFields]
+  )
+  const fallbackTargetFields = useMemo(
+    () => getFallbackTargetFields(currentExtraction, ignoredFields),
     [currentExtraction, ignoredFields]
   )
   const ignoredMissingFields = useMemo(
@@ -438,6 +447,18 @@ export function AIPrompt() {
     () => getHighlightSpans(rawText, currentExtraction),
     [rawText, currentExtraction]
   )
+  const isWaitingForFirstDetection = Boolean(
+    trimmedInput &&
+      !extractionError &&
+      (!currentExtraction || currentExtraction.detectedFields.length === 0) &&
+      (isExtracting || fallbackTargetFields.length > 0 || !currentExtraction)
+  )
+  const completionLabel = isWaitingForFirstDetection
+    ? "Detecting..."
+    : `${completionPercentage}%`
+  const progressWidth = isWaitingForFirstDetection
+    ? 18
+    : completionPercentage
 
   const captureSelection = useCallback(() => {
     const textarea = textareaRef.current
@@ -477,7 +498,10 @@ export function AIPrompt() {
       return
     }
 
-    const timeoutId = window.setTimeout(() => {
+    setIsExtracting(true)
+
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(async () => {
       const previousText = previousTextRef.current
       const isAppend = previousText.length > 0 && text.startsWith(previousText)
       const parseWindow = isAppend
@@ -486,33 +510,73 @@ export function AIPrompt() {
             text: text.slice(Math.max(0, previousText.length - contextWindowSize)),
           }
         : { offset: 0, text }
-      const fastExtraction = extractFastProcurementSlots(parseWindow.text, parseWindow.offset)
-      const nextExtraction = isAppend
-        ? mergeProcurementExtractions(extractionRef.current, fastExtraction, ignoredFields)
-        : recomputeProcurementCompletion(fastExtraction, ignoredFields)
 
-      previousTextRef.current = text
-      extractionRef.current = nextExtraction
       parseWindowRef.current = parseWindow
       captureSelection()
-      setExtraction(nextExtraction)
-    }, 80)
+      setIsExtracting(true)
 
-    return () => window.clearTimeout(timeoutId)
+      try {
+        const response = await fetch("/api/procurement/extract", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mode: "fast",
+            prompt: parseWindow.text,
+          }),
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          throw new Error("Extraction failed")
+        }
+
+        const parsedExtraction = offsetExtractionSpans(
+          (await response.json()) as ProcurementRequirementExtraction,
+          parseWindow.offset
+        )
+        const nextExtraction = isAppend
+          ? mergeProcurementExtractions(extractionRef.current, parsedExtraction, ignoredFields)
+          : recomputeProcurementCompletion(parsedExtraction, ignoredFields)
+
+        if (controller.signal.aborted) return
+
+        previousTextRef.current = text
+        extractionRef.current = nextExtraction
+        captureSelection()
+        setExtraction(nextExtraction)
+      } catch {
+        if (controller.signal.aborted) return
+
+        setExtractionError("Requirement extraction is unavailable.")
+      } finally {
+        if (!controller.signal.aborted) {
+          captureSelection()
+          setIsExtracting(false)
+        }
+      }
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      controller.abort()
+    }
   }, [rawText, ignoredFields, captureSelection])
 
   useEffect(() => {
-    if (!trimmedInput || !currentExtraction || enabledMissingFields.length === 0) {
+    if (!trimmedInput || !currentExtraction || fallbackTargetFields.length === 0) {
       setIsExtracting(false)
       return
     }
 
+    if (currentExtraction.detectedFields.length === 0) {
+      setIsExtracting(true)
+    }
+
     const controller = new AbortController()
     const timeoutId = window.setTimeout(async () => {
-      const parseWindow = parseWindowRef.current.text
-        ? parseWindowRef.current
-        : { offset: 0, text: rawText }
-      const fallbackKey = `${parseWindow.offset}:${parseWindow.text}:${enabledMissingFields.join(",")}`
+      const fallbackKey = `${rawText}:${fallbackTargetFields.join(",")}`
 
       if (lastFallbackKeyRef.current === fallbackKey) return
 
@@ -528,8 +592,9 @@ export function AIPrompt() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            prompt: parseWindow.text,
-            unresolvedFields: enabledMissingFields,
+            mode: "fallback",
+            prompt: rawText,
+            unresolvedFields: fallbackTargetFields,
           }),
           signal: controller.signal,
         })
@@ -540,7 +605,7 @@ export function AIPrompt() {
 
         const data = offsetExtractionSpans(
           (await response.json()) as ProcurementRequirementExtraction,
-          parseWindow.offset
+          0
         )
 
         if (controller.signal.aborted) return
@@ -572,30 +637,68 @@ export function AIPrompt() {
   }, [
     captureSelection,
     currentExtraction,
-    enabledMissingFields,
+    fallbackTargetFields,
     ignoredFields,
     rawText,
     trimmedInput,
   ])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit || !currentExtraction) return
 
     const id = crypto.randomUUID()
-    const payload = buildProcurementSearchPayload(
-      rawText,
-      currentExtraction,
-      ignoredFields,
-      selectedModel
-    )
+    setIsSubmitting(true)
+    setIsExtracting(true)
+    setExtractionError(null)
 
     try {
+      const response = await fetch("/api/procurement/extract", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mode: "verify",
+          prompt: rawText,
+          unresolvedFields: enabledMissingFields,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Final extraction verification failed")
+      }
+
+      const verifiedExtraction = recomputeProcurementCompletion(
+        (await response.json()) as ProcurementRequirementExtraction,
+        ignoredFields
+      )
+
+      extractionRef.current = verifiedExtraction
+      captureSelection()
+      setExtraction(verifiedExtraction)
+
+      if (!verifiedExtraction.readyToSubmit) {
+        setExtractionError("Please complete the missing requirements before searching.")
+        return
+      }
+
+      const payload = buildProcurementSearchPayload(
+        rawText,
+        verifiedExtraction,
+        ignoredFields,
+        selectedModel
+      )
+
       window.sessionStorage.setItem(
         procurementSearchStorageKey(id),
         JSON.stringify(payload)
       )
     } catch {
+      setExtractionError("Final requirement verification is unavailable.")
       return
+    } finally {
+      setIsSubmitting(false)
+      setIsExtracting(false)
     }
 
     router.push(
@@ -637,11 +740,7 @@ export function AIPrompt() {
               style={{ color: "var(--p-muted)" }}
             >
               <span>Requirement completeness</span>
-              <span className="font-mono">
-                {isExtracting && !currentExtraction
-                  ? "Checking…"
-                  : `${completionPercentage}%`}
-              </span>
+              <span className="font-mono">{completionLabel}</span>
             </div>
             <div
               className="h-1 overflow-hidden rounded-full"
@@ -649,7 +748,7 @@ export function AIPrompt() {
             >
               <div
                 className="h-full rounded-full transition-[width] duration-300 ease-out"
-                style={{ width: `${completionPercentage}%`, background: "var(--p-accent)" }}
+                style={{ width: `${progressWidth}%`, background: "var(--p-accent)" }}
               />
             </div>
           </div>

@@ -20,6 +20,9 @@ const normalizedRequestSchema = z
     deliveryDate: z.string().optional(),
     ignoredFields: z.array(procurementFieldSchema),
     location: z.string().optional(),
+    locationCountry: z.string().optional(),
+    locationRegion: z.string().optional(),
+    locationValidatedBy: z.string().optional(),
     priority: z.enum(["low", "medium", "high"]).optional(),
     quantity: z.number().int().positive().optional(),
     resourceType: z.string().optional(),
@@ -29,8 +32,31 @@ const normalizedRequestSchema = z
 
 const supplierResultSchema = z
   .object({
+    companyName: z.string(),
+    domain: z.string(),
     estimatedFit: z.number().min(0).max(1),
+    links: z
+      .object({
+        contact: z.string().url().optional(),
+        product: z.string().url().optional(),
+        quote: z.string().url().optional(),
+        website: z.string().url(),
+      })
+      .strict(),
     matchedFields: z.array(procurementFieldSchema),
+    metrics: z
+      .object({
+        budgetFit: z.number().min(0).max(1),
+        bulkFit: z.number().min(0).max(1),
+        complianceFit: z.number().min(0).max(1),
+        deliveryFit: z.number().min(0).max(1),
+        locationFit: z.number().min(0).max(1),
+        reliability: z.number().min(0).max(1),
+        resourceFit: z.number().min(0).max(1),
+        specificationFit: z.number().min(0).max(1),
+      })
+      .strict(),
+    score: z.number().min(0).max(100),
     snippet: z.string(),
     supplierName: z.string(),
     title: z.string(),
@@ -181,6 +207,18 @@ function linkLabel(type: ReturnType<typeof classifyLink>) {
   return labels[type]
 }
 
+function linksFromResultMetadata(company: ProcurementSupplierResult) {
+  const links = company.links
+  if (!links) return []
+
+  return [
+    links.quote ? { label: "Request quote", type: "quote" as const, url: links.quote } : null,
+    links.contact ? { label: "Contact page", type: "contact" as const, url: links.contact } : null,
+    links.product ? { label: "Product page", type: "product" as const, url: links.product } : null,
+    links.website ? { label: "Company website", type: "source" as const, url: links.website } : null,
+  ].filter(Boolean) as z.infer<typeof usefulLinkSchema>[]
+}
+
 function uniqueByUrl<T extends { url: string }>(items: T[]) {
   const seen = new Set<string>()
   return items.filter((item) => {
@@ -271,7 +309,7 @@ export async function getProcurementCompanyDetails(
   request: z.infer<typeof companyDetailsRequestSchema>
 ): Promise<ProcurementCompanyDetails> {
   const { company, normalizedRequest } = request
-  const domain = domainFromUrl(company.url)
+  const domain = company.domain || domainFromUrl(company.url)
   const evidence = [evidenceFromCompany(company)]
 
   const apiKey = process.env.EXA_API_KEY
@@ -321,22 +359,25 @@ export async function getProcurementCompanyDetails(
     .map((item) => `${item.title} ${item.snippet} ${item.url}`)
     .join(" ")
   const usefulLinks = uniqueByUrl(
-    uniqueEvidence.map((item) => {
-      const type = classifyLink(item.url)
-      return {
-        label: linkLabel(type),
-        type,
-        url: item.url,
-      }
-    })
+    [
+      ...linksFromResultMetadata(company),
+      ...uniqueEvidence.map((item) => {
+        const type = classifyLink(item.url)
+        return {
+          label: linkLabel(type),
+          type,
+          url: item.url,
+        }
+      }),
+    ]
   )
 
   return {
     budgetFit: budgetFit(normalizedRequest, company),
     company: {
       domain,
-      name: company.supplierName || company.title,
-      score: Math.round(company.estimatedFit * 100),
+      name: company.companyName || company.supplierName || company.title,
+      score: company.score ?? Math.round(company.estimatedFit * 100),
       url: company.url,
     },
     complianceFit: complianceFit(detailsContent),
