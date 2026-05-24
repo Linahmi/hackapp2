@@ -15,7 +15,7 @@ const procurementFieldKeys: ProcurementFieldKey[] = [
 ]
 
 const requiredProcurementFieldKeys: ProcurementFieldKey[] = procurementFieldKeys.filter(
-  (field) => field !== "constraints"
+  (field) => field !== "constraints" && field !== "specifications" && field !== "priority"
 )
 
 const MIN_READY_CONFIDENCE = 0.55

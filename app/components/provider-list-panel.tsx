@@ -1,15 +1,8 @@
 "use client";
 
-import { ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronRight, ChevronUp, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
 import styles from "./provider-list-panel.module.css";
-
-type MetricLabel = "Compliance" | "Cost" | "Performance" | "Reliability";
-
-type ProviderMetric = {
-  label: MetricLabel;
-  value: number;
-};
 
 export type RankedProvider = {
   name: string;
@@ -21,21 +14,6 @@ export type RankedProvider = {
   tags?: string[];
   warnings?: string[];
 };
-
-const capabilityTags = ["GDPR", "ISO27001", "SOC2", "HIPAA", "PCI DSS", "CSA STAR"];
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function hashString(input: string) {
-  let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash << 5) - hash + input.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
 
 function getDomain(url: string) {
   try {
@@ -54,66 +32,34 @@ function getInitials(name: string) {
     .join("");
 }
 
-function deriveMetrics(provider: RankedProvider): ProviderMetric[] {
-  const h = hashString(`${provider.name}-${provider.url}`);
-  const variance = (shift: number, spread: number) => ((h >> shift) % spread) - Math.floor(spread / 2);
-
-  return [
-    { label: "Compliance", value: clamp(provider.score + 4 + variance(1, 9), 52, 99) },
-    { label: "Cost", value: clamp(provider.score - 6 + variance(4, 11), 48, 96) },
-    { label: "Performance", value: clamp(provider.score + variance(7, 9), 50, 98) },
-    { label: "Reliability", value: clamp(provider.score + 2 + variance(10, 7), 52, 99) },
-  ];
-}
-
-function deriveTags(provider: RankedProvider) {
-  if (provider.tags?.length) return provider.tags;
-
-  const h = hashString(provider.url + provider.name);
-  const first = h % capabilityTags.length;
-  const second = (first + 2) % capabilityTags.length;
-  const third = (first + 4) % capabilityTags.length;
-  return [capabilityTags[first], capabilityTags[second], capabilityTags[third]];
-}
-
 function warningLabel(warnings?: string[]) {
   if (!warnings?.length) return null;
-  const budgetWarning = warnings.find((warning) => warning.toLowerCase().includes("budget"));
+  const budgetWarning = warnings.find((w) => w.toLowerCase().includes("budget"));
   if (budgetWarning) return "Budget warning";
   return warnings.length === 1 ? "Warning" : `${warnings.length} warnings`;
 }
 
-function metricExplanation(metric: ProviderMetric) {
-  const tone = metric.value >= 78 ? "strong" : metric.value >= 62 ? "moderate" : "limited";
-  return `${metric.label} signal is ${tone} based on the result score and supplier profile.`;
-}
-
 function CompanyResultCard({
-  defaultExpanded,
+  expanded,
   index,
   onSelect,
+  onToggleExpand,
   provider,
   selectable,
   selected,
 }: {
-  defaultExpanded: boolean;
+  expanded: boolean;
   index: number;
   onSelect?: () => void;
-  provider: RankedProvider & {
-    domain: string;
-    logo: string;
-    metrics: ProviderMetric[];
-    tags: string[];
-  };
+  onToggleExpand: () => void;
+  provider: RankedProvider & { domain: string; logo: string };
   selectable?: boolean;
   selected?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const visibleTags = provider.tags.slice(0, 4);
-  const hiddenTagCount = Math.max(0, provider.tags.length - visibleTags.length);
   const warning = warningLabel(provider.warnings);
   const snippet = provider.snippet || provider.reasoning;
   const detailsId = `provider-details-${index}`;
+  const fields = provider.matchedFields ?? [];
 
   return (
     <article className={styles.card} data-expanded={expanded} data-selected={selected}>
@@ -121,13 +67,11 @@ function CompanyResultCard({
         type="button"
         className={styles.cardButton}
         onClick={() => {
-          if (selectable) {
+          if (selectable && !expanded) {
             onSelect?.()
-            setExpanded(true)
-            return
+          } else {
+            onToggleExpand()
           }
-
-          setExpanded((current) => !current)
         }}
         aria-expanded={expanded}
         aria-controls={detailsId}
@@ -160,28 +104,23 @@ function CompanyResultCard({
           </span>
         </span>
 
-        <span className={styles.metricGrid}>
-          {provider.metrics.map((metric) => (
-            <span className={styles.metricPill} key={`${provider.url}-${metric.label}`}>
-              <span>{metric.label}</span>
-              <strong>{metric.value}%</strong>
-            </span>
-          ))}
-        </span>
-
-        <span className={styles.tagRow}>
-          <span className={styles.certGroup}>
-            {visibleTags.map((tag) => (
-              <span key={`${provider.url}-${tag}`} className={styles.tagChip}>
-                {tag}
+        {/* Matched procurement fields — real data from search */}
+        {fields.length > 0 && (
+          <span className={styles.metricGrid}>
+            {fields.map((field) => (
+              <span className={styles.metricPill} key={`${provider.url}-${field}`}>
+                {field}
               </span>
             ))}
-            {hiddenTagCount > 0 && (
-              <span className={styles.tagChip}>+{hiddenTagCount}</span>
-            )}
           </span>
-          {warning && <span className={styles.warningChip}>{warning}</span>}
-        </span>
+        )}
+
+        {warning && (
+          <span className={styles.tagRow}>
+            <span className={styles.certGroup} />
+            <span className={styles.warningChip}>{warning}</span>
+          </span>
+        )}
 
         <span className={styles.snippet}>{snippet}</span>
       </button>
@@ -193,18 +132,18 @@ function CompanyResultCard({
             <p>{provider.reasoning}</p>
           </div>
 
-          {provider.matchedFields?.length ? (
+          {fields.length > 0 && (
             <div className={styles.detailBlock}>
               <span className={styles.detailLabel}>Matched fields</span>
               <div className={styles.detailChipRow}>
-                {provider.matchedFields.map((field) => (
+                {fields.map((field) => (
                   <span key={`${provider.url}-${field}`} className={styles.detailChip}>
                     {field}
                   </span>
                 ))}
               </div>
             </div>
-          ) : null}
+          )}
 
           {provider.warnings?.length ? (
             <div className={styles.detailBlock}>
@@ -217,27 +156,28 @@ function CompanyResultCard({
             </div>
           ) : null}
 
-          <div className={styles.detailBlock}>
-            <span className={styles.detailLabel}>Metric signals</span>
-            <div className={styles.metricDetailGrid}>
-              {provider.metrics.map((metric) => (
-                <span key={`${provider.url}-${metric.label}-detail`}>
-                  <strong>{metric.label} {metric.value}%</strong>
-                  {metricExplanation(metric)}
-                </span>
-              ))}
-            </div>
+          <div className={styles.expandedFooter}>
+            <a
+              className={styles.sourceLink}
+              href={provider.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open source
+              <ExternalLink size={14} strokeWidth={2} />
+            </a>
+            <button
+              type="button"
+              className={styles.collapseBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand();
+              }}
+            >
+              <ChevronUp size={13} strokeWidth={2.2} />
+              Collapse
+            </button>
           </div>
-
-          <a
-            className={styles.sourceLink}
-            href={provider.url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Open source
-            <ExternalLink size={14} strokeWidth={2} />
-          </a>
         </div>
       </div>
     </article>
@@ -255,14 +195,16 @@ export function ProviderListPanel({
   providers: RankedProvider[]
   selectedIndex?: number | null
 }) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(
+    defaultExpandedFirst && providers.length > 0 ? 0 : null
+  );
+
   const hydratedProviders = useMemo(
     () =>
       providers.map((provider) => ({
         ...provider,
         domain: getDomain(provider.url),
         logo: getInitials(provider.name),
-        metrics: deriveMetrics(provider),
-        tags: deriveTags(provider),
       })),
     [providers],
   );
@@ -273,9 +215,15 @@ export function ProviderListPanel({
         {hydratedProviders.map((provider, index) => (
           <CompanyResultCard
             key={`${provider.url}-${index}`}
-            defaultExpanded={defaultExpandedFirst && index === 0}
+            expanded={expandedIndex === index}
             index={index}
-            onSelect={() => onSelect?.(provider, index)}
+            onSelect={() => {
+              onSelect?.(provider, index)
+              setExpandedIndex(index)
+            }}
+            onToggleExpand={() =>
+              setExpandedIndex((prev) => (prev === index ? null : index))
+            }
             provider={provider}
             selectable={Boolean(onSelect)}
             selected={selectedIndex === index}

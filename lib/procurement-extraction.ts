@@ -14,7 +14,7 @@ export const procurementFieldKeys = [
 ] as const
 
 export const requiredProcurementFieldKeys = procurementFieldKeys.filter(
-  (field) => field !== "constraints"
+  (field) => field !== "constraints" && field !== "specifications" && field !== "priority"
 )
 
 export const procurementFieldSchema = z.enum(procurementFieldKeys)

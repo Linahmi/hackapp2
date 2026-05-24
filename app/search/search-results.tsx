@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import {
   ArrowLeft,
@@ -23,7 +23,9 @@ import { DefaultChatTransport, type UIMessage } from "ai"
 import { Streamdown } from "streamdown"
 
 import { ProviderListPanel, type RankedProvider } from "@/app/components/provider-list-panel"
+import { PhaseTimeline, type TimelinePhase } from "@/app/components/phase-timeline"
 import { useChatStore } from "@/lib/stores/chat-store"
+import { useProcurementStore } from "@/lib/stores/procurement-store"
 import {
   type ProcurementCompanyDetailsResponse,
   type ProcurementQuoteResponse,
@@ -31,6 +33,7 @@ import {
   type ProcurementSearchPayload,
   type ProcurementSearchResponse,
 } from "@/lib/procurement-search-types"
+import type { ProcurementFieldKey } from "@/lib/procurement-extraction"
 
 type Provider = RankedProvider
 
@@ -378,6 +381,8 @@ function ProcurementWorkflowChrome({
   nextDisabled,
   onBack,
   onNext,
+  onGoToStep,
+  stepAccessible,
 }: {
   children: ReactNode
   currentStep: ProcurementWorkflowStep
@@ -385,6 +390,8 @@ function ProcurementWorkflowChrome({
   nextDisabled: boolean
   onBack: () => void
   onNext: () => void
+  onGoToStep: (step: ProcurementWorkflowStep) => void
+  stepAccessible: boolean[]
 }) {
   return (
     <>
@@ -402,26 +409,36 @@ function ProcurementWorkflowChrome({
 
         <div className="grid flex-1 gap-2">
           <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            {procurementWorkflowSteps.map((step, index) => (
-              <span
-                key={step}
-                className={
-                  index === currentStep
-                    ? "font-semibold text-foreground"
-                    : "hidden sm:inline"
-                }
-              >
-                {index + 1}. {step}
-              </span>
-            ))}
+            {procurementWorkflowSteps.map((step, index) => {
+              const isActive = index === currentStep
+              const canNavigate = stepAccessible[index] && !isActive
+              return canNavigate ? (
+                <button
+                  key={step}
+                  type="button"
+                  onClick={() => onGoToStep(index as ProcurementWorkflowStep)}
+                  className="hidden sm:inline font-medium text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                >
+                  {index + 1}. {step}
+                </button>
+              ) : (
+                <span
+                  key={step}
+                  className={isActive ? "font-semibold text-foreground" : "hidden sm:inline opacity-40"}
+                >
+                  {index + 1}. {step}
+                </span>
+              )
+            })}
           </div>
-          <div className="h-1 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-300"
-              style={{
-                width: `${((currentStep + 1) / procurementWorkflowSteps.length) * 100}%`,
-              }}
-            />
+          <div className="flex gap-1.5">
+            {procurementWorkflowSteps.map((_, i) => (
+              <div
+                key={i}
+                className="h-[3px] flex-1 rounded-full transition-colors duration-300"
+                style={{ background: i <= currentStep ? "var(--p-accent)" : "var(--p-border-strong)" }}
+              />
+            ))}
           </div>
         </div>
 
@@ -511,9 +528,86 @@ function WarningsList({ warnings }: { warnings: string[] }) {
   )
 }
 
+function RefineForm({
+  missingFields,
+  onRefine,
+}: {
+  missingFields: ProcurementFieldKey[]
+  onRefine: (values: Partial<Record<ProcurementFieldKey, string>>) => void
+}) {
+  const [values, setValues] = useState<Partial<Record<ProcurementFieldKey, string>>>({})
+  const [open, setOpen] = useState(false)
+
+  const actionable = missingFields.filter((f) => f !== "constraints")
+  if (actionable.length === 0) return null
+
+  const labels: Partial<Record<ProcurementFieldKey, string>> = {
+    location: "Delivery location",
+    priority: "Priority (urgent / standard / low)",
+    deliveryDate: "Delivery timeline",
+    quantity: "Quantity",
+    budget: "Budget (e.g. 40000 CHF)",
+    specifications: "Specifications (comma-separated)",
+  }
+
+  const hasAny = actionable.some((f) => values[f]?.trim())
+
+  return (
+    <section
+      className="rounded-2xl border p-4"
+      style={{ borderColor: "var(--p-border)", background: "var(--p-surface-alt)" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <WarningCircle size={14} weight="duotone" className="text-primary shrink-0" />
+          <p className="text-sm font-medium text-foreground">
+            Some details weren&apos;t detected —{" "}
+            <span style={{ color: "var(--p-muted)" }}>
+              {actionable.map((f) => labels[f] ?? f).join(", ")}
+            </span>
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground shrink-0">{open ? "Hide" : "Add details"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {actionable.map((field) => (
+            <div key={field} className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-foreground">{labels[field] ?? field}</label>
+              <input
+                type="text"
+                placeholder={`Enter ${(labels[field] ?? field).toLowerCase()}…`}
+                value={values[field] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [field]: e.target.value }))}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          ))}
+          <div className="sm:col-span-2">
+            <button
+              type="button"
+              disabled={!hasAny}
+              onClick={() => onRefine(values)}
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+            >
+              Refine search
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function AnalysisStep({
   error,
   loading,
+  onRefine,
   onShowSources,
   payload,
   response,
@@ -522,6 +616,7 @@ function AnalysisStep({
 }: {
   error: string | null
   loading: boolean
+  onRefine: (values: Partial<Record<ProcurementFieldKey, string>>) => void
   onShowSources: () => void
   payload: ProcurementSearchPayload | null
   response: ProcurementSearchResponse | null
@@ -540,6 +635,8 @@ function AnalysisStep({
   if (error) return <ErrorBlock message={error} />
   if (!response) return null
 
+  const missingFields = (payload?.missingFields ?? []) as ProcurementFieldKey[]
+
   return (
     <>
       {sourceProviders.length > 0 && (
@@ -548,6 +645,7 @@ function AnalysisStep({
       <ReasoningSection markdown={sourceReasoning} isStreaming={false} />
       <NormalizedRequestCard response={response} />
       <WarningsList warnings={response.warnings} />
+      <RefineForm missingFields={missingFields} onRefine={onRefine} />
     </>
   )
 }
@@ -847,6 +945,82 @@ function QuoteStep({
   )
 }
 
+// ── Audit trail ────────────────────────────────────────────────────────────────
+
+type AuditEvent = {
+  id: string
+  timestamp: string
+  label: string
+  detail?: string
+}
+
+function AuditTrail({ events }: { events: AuditEvent[] }) {
+  return (
+    <aside
+      className="w-52 flex-shrink-0 sticky top-24 self-start"
+      aria-label="Audit trail"
+    >
+      <p
+        className="text-[10px] font-semibold uppercase tracking-[0.1em] mb-3"
+        style={{ color: "var(--p-muted)" }}
+      >
+        Audit trail
+      </p>
+      <div className="relative">
+        {events.length > 0 && (
+          <div
+            className="absolute left-[5px] top-2 bottom-2 w-px"
+            style={{ background: "var(--p-border)" }}
+          />
+        )}
+        <div className="grid gap-3">
+          {events.length === 0 ? (
+            <p className="text-[11px] pl-1" style={{ color: "var(--p-faint)" }}>
+              No events yet
+            </p>
+          ) : (
+            events.map((event) => (
+              <div key={event.id} className="flex gap-2.5 items-start">
+                <span
+                  className="w-[11px] h-[11px] rounded-full flex-shrink-0 mt-[2px] border-2"
+                  style={{
+                    background: "var(--p-accent)",
+                    borderColor: "var(--p-surface-alt)",
+                    zIndex: 1,
+                    position: "relative",
+                  }}
+                />
+                <div className="min-w-0">
+                  <p
+                    className="text-[12px] font-medium leading-[1.3]"
+                    style={{ color: "var(--p-ink)" }}
+                  >
+                    {event.label}
+                  </p>
+                  {event.detail && (
+                    <p
+                      className="text-[11px] leading-[1.3] mt-[2px] truncate"
+                      style={{ color: "var(--p-ink-2)" }}
+                    >
+                      {event.detail}
+                    </p>
+                  )}
+                  <p
+                    className="font-mono text-[10px] mt-[3px]"
+                    style={{ color: "var(--p-muted)" }}
+                  >
+                    {event.timestamp}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </aside>
+  )
+}
+
 // ── Root export ────────────────────────────────────────────────────────────────
 
 export function SearchResults({
@@ -878,6 +1052,7 @@ export function SearchResults({
     transport,
     messages: initialMessages,
   })
+  const [searchRevision, setSearchRevision] = useState(0)
   const [procurementPayload, setProcurementPayload] =
     useState<ProcurementSearchPayload | null>(null)
   const [procurementResponse, setProcurementResponse] =
@@ -894,6 +1069,7 @@ export function SearchResults({
   const [quotation, setQuotation] = useState<ProcurementQuoteResponse | null>(null)
   const [quotationLoading, setQuotationLoading] = useState(false)
   const [quotationError, setQuotationError] = useState<string | null>(null)
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -904,6 +1080,11 @@ export function SearchResults({
   const setConversation = useChatStore((s) => s.setConversation)
   const setVisibleMessages = useChatStore((s) => s.setVisibleMessages)
   const setStoreStatus = useChatStore((s) => s.setStatus)
+
+  const setProcStep = useProcurementStore((s) => s.setStep)
+  const setProcStatus = useProcurementStore((s) => s.setStatus)
+  const setProcSuppliersFound = useProcurementStore((s) => s.setSuppliersFound)
+  const resetProcStore = useProcurementStore((s) => s.reset)
 
   useEffect(() => {
     if (isProcurementMode) return
@@ -1002,7 +1183,136 @@ export function SearchResults({
       })
 
     return () => controller.abort()
-  }, [chatId, isProcurementMode, mounted])
+  }, [chatId, isProcurementMode, mounted, searchRevision])
+
+  const refineSearch = (extraValues: Partial<Record<ProcurementFieldKey, string>>) => {
+    const stored = window.sessionStorage.getItem(procurementSearchStorageKey(chatId))
+    if (!stored) return
+
+    try {
+      const payload = JSON.parse(stored) as ProcurementSearchPayload
+      const updatedFields = { ...payload.fields }
+
+      for (const [field, raw] of Object.entries(extraValues) as [ProcurementFieldKey, string][]) {
+        if (!raw?.trim()) continue
+        const base = { confidence: 0.92, required: false, spanText: null }
+        if (field === "specifications" || field === "constraints") {
+          updatedFields[field] = { ...base, value: raw.split(",").map((s) => s.trim()).filter(Boolean) }
+        } else if (field === "quantity") {
+          const n = parseInt(raw.replace(/[^0-9]/g, ""), 10)
+          if (!isNaN(n)) updatedFields[field] = { ...base, value: n }
+        } else {
+          (updatedFields as Record<string, unknown>)[field] = { ...base, value: raw.trim() }
+        }
+      }
+
+      const updatedMissing = (payload.missingFields ?? []).filter(
+        (f) => !Object.keys(extraValues).includes(f) || !extraValues[f]?.trim()
+      )
+
+      window.sessionStorage.setItem(
+        procurementSearchStorageKey(chatId),
+        JSON.stringify({ ...payload, fields: updatedFields, missingFields: updatedMissing, readyToSubmit: true })
+      )
+      setSearchRevision((r) => r + 1)
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  // ── Audit logging ─────────────────────────────────────────────────────────────
+
+  const logAudit = useCallback((label: string, detail?: string) => {
+    setAuditEvents((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        label,
+        detail,
+      },
+    ])
+  }, [])
+
+  useEffect(() => {
+    if (!isProcurementMode || !procurementLoading) return
+    logAudit("Search started", query)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [procurementLoading])
+
+  useEffect(() => {
+    if (!isProcurementMode || !procurementResponse) return
+    const count = procurementResponse.results?.length ?? 0
+    logAudit("Suppliers found", `${count} matching supplier${count !== 1 ? "s" : ""}`)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [procurementResponse])
+
+  useEffect(() => {
+    if (!isProcurementMode || selectedCompanyIndex === null) return
+    const name = procurementResponse?.results[selectedCompanyIndex]?.name
+    if (name) logAudit("Company selected", name)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCompanyIndex])
+
+  useEffect(() => {
+    if (!isProcurementMode || !companyDetails) return
+    logAudit("Details fetched", companyDetails.company.name)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyDetails])
+
+  useEffect(() => {
+    if (!isProcurementMode || !quotation) return
+    logAudit("Quotation generated", quotation.quotation.providerCompany)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotation])
+
+  // ── Sync procurement state → header store ─────────────────────────────────────
+
+  // Reset store when this chat id changes (new request)
+  useEffect(() => {
+    if (!isProcurementMode) return
+    resetProcStore()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, isProcurementMode])
+
+  // Mirror workflow step label
+  useEffect(() => {
+    if (!isProcurementMode) return
+    setProcStep(procurementStep, procurementWorkflowSteps[procurementStep])
+  }, [isProcurementMode, procurementStep, setProcStep])
+
+  // Mirror status
+  useEffect(() => {
+    if (!isProcurementMode) return
+    if (procurementLoading) { setProcStatus("searching"); return }
+    if (companyDetailsLoading) { setProcStatus("analyzing"); return }
+    if (quotationLoading) { setProcStatus("generating"); return }
+    if (quotation) { setProcStatus("complete"); return }
+    if (companyDetails) { setProcStatus("analyzing"); return }
+    if (selectedCompanyIndex === null && procurementResponse) { setProcStatus("awaiting-selection"); return }
+    if (procurementResponse) { setProcStatus("idle"); return }
+    setProcStatus("idle")
+  }, [
+    isProcurementMode,
+    procurementLoading,
+    companyDetailsLoading,
+    quotationLoading,
+    quotation,
+    companyDetails,
+    selectedCompanyIndex,
+    procurementResponse,
+    setProcStatus,
+  ])
+
+  // Mirror suppliers found count
+  useEffect(() => {
+    if (!isProcurementMode) return
+    if (procurementResponse) {
+      setProcSuppliersFound(procurementResponse.results?.length ?? 0)
+    } else {
+      setProcSuppliersFound(null)
+    }
+  }, [isProcurementMode, procurementResponse, setProcSuppliersFound])
 
   // Auto-send the query only on a fresh chat (no persisted messages).
   const sentRef = useRef<string | null>(null)
@@ -1036,6 +1346,92 @@ export function SearchResults({
     selectedCompanyIndex !== null
       ? procurementResponse?.results[selectedCompanyIndex] ?? null
       : null
+
+  // ── Phase timeline (dynamic, derived from real state) ────────────────────────
+
+  const mountTimeRef = useRef(
+    new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  )
+
+  const timelinePhases = useMemo((): TimelinePhase[] => {
+    const t = (label: string) =>
+      auditEvents.find((e) => e.label === label)?.timestamp ?? ""
+
+    const supplierCount = procurementResponse?.results?.length ?? 0
+    const selectedName = selectedCompany?.name ?? ""
+
+    return [
+      {
+        id: "request",
+        n: "01",
+        title: "Request submitted",
+        status: "done",
+        when: mountTimeRef.current,
+        actor: "You",
+        summary: query.length > 120 ? query.slice(0, 120) + "…" : query,
+      },
+      {
+        id: "sourcing",
+        n: "02",
+        title: "Supplier search",
+        status: procurementResponse ? "done" : procurementLoading ? "active" : "queued",
+        when: procurementResponse ? t("Suppliers found") : procurementLoading ? "Running…" : "",
+        actor: "Procora · AI",
+        summary: procurementResponse
+          ? `${supplierCount} supplier${supplierCount !== 1 ? "s" : ""} matched your request.`
+          : procurementLoading
+          ? "Searching supplier database…"
+          : "Will search suppliers matching your requirements.",
+      },
+      {
+        id: "selection",
+        n: "03",
+        title: "Company selected",
+        status: selectedCompany ? "done" : procurementResponse ? "active" : "queued",
+        when: selectedCompany ? t("Company selected") : procurementResponse ? "Awaiting selection" : "",
+        actor: "You",
+        summary: selectedCompany
+          ? `Selected: ${selectedName}`
+          : "Choose the best-matching supplier from the list.",
+      },
+      {
+        id: "details",
+        n: "04",
+        title: "Provider analysis",
+        status: companyDetails ? "done" : companyDetailsLoading ? "active" : "queued",
+        when: companyDetails ? t("Details fetched") : companyDetailsLoading ? "Running…" : "",
+        actor: "Procora · analysis",
+        summary: companyDetails
+          ? `${companyDetails.company.name} profile loaded.`
+          : companyDetailsLoading
+          ? "Fetching supplier details and certifications…"
+          : "Deep analysis of supplier certifications, pricing and history.",
+      },
+      {
+        id: "quotation",
+        n: "05",
+        title: "Quotation ready",
+        status: quotation ? "done" : quotationLoading ? "active" : "queued",
+        when: quotation ? t("Quotation generated") : quotationLoading ? "Generating…" : "",
+        actor: "Procora · RFQ",
+        summary: quotation
+          ? `RFQ generated for ${quotation.quotation.providerCompany}.`
+          : quotationLoading
+          ? "Generating request for quotation…"
+          : "Auto-generates RFQ document and supplier email.",
+      },
+    ]
+  }, [
+    auditEvents,
+    procurementResponse,
+    procurementLoading,
+    selectedCompany,
+    companyDetails,
+    companyDetailsLoading,
+    quotation,
+    quotationLoading,
+    query,
+  ])
 
   useEffect(() => {
     if (!isProcurementMode || !selectedCompany || procurementStep < 2) return
@@ -1181,14 +1577,7 @@ export function SearchResults({
 
   if (!query) return null
 
-  const heading = (
-    <h1
-      className="text-5xl text-foreground leading-tight"
-      style={{ fontFamily: "var(--font-instrument-serif)" }}
-    >
-      {query}
-    </h1>
-  )
+  const heading = null
 
   const isStreaming = status === "streaming" || status === "submitted"
   const nothingYet = providers.length === 0 && !markdown
@@ -1215,6 +1604,15 @@ export function SearchResults({
   const goToPreviousProcurementStep = () => {
     setProcurementStep((step) => Math.max(0, step - 1) as ProcurementWorkflowStep)
   }
+  const goToProcurementStep = (step: ProcurementWorkflowStep) => {
+    setProcurementStep(step)
+  }
+  const procurementStepAccessible = [
+    true,
+    Boolean(procurementResponse),
+    selectedCompanyIndex !== null,
+    Boolean(companyDetails),
+  ]
 
   if (!mounted) {
     return (
@@ -1227,6 +1625,8 @@ export function SearchResults({
   if (isProcurementMode) {
     return (
       <>
+        <PhaseTimeline phases={timelinePhases} />
+        <div className="flex gap-6 items-start">
         <motion.div
           ref={contentRef}
           animate={{ x: panelOpen ? -SHIFT : 0 }}
@@ -1235,7 +1635,7 @@ export function SearchResults({
             // Reveal the side panel only once the shift-left settles.
             if (panelOpen) setPanelVisible(true)
           }}
-          className="max-w-3xl mx-auto flex flex-col gap-8"
+          className="flex-1 min-w-0 flex flex-col gap-8"
         >
           <ProcurementWorkflowChrome
             currentStep={procurementStep}
@@ -1243,11 +1643,14 @@ export function SearchResults({
             nextDisabled={procurementNextDisabled}
             onBack={goToPreviousProcurementStep}
             onNext={goToNextProcurementStep}
+            onGoToStep={goToProcurementStep}
+            stepAccessible={procurementStepAccessible}
           >
             {procurementStep === 0 && (
               <AnalysisStep
                 error={procurementError}
                 loading={procurementLoading}
+                onRefine={refineSearch}
                 onShowSources={showSourcesPanel}
                 payload={procurementPayload}
                 response={procurementResponse}
@@ -1290,6 +1693,9 @@ export function SearchResults({
             )}
           </ProcurementWorkflowChrome>
         </motion.div>
+
+        <AuditTrail events={auditEvents} />
+        </div>
 
         <SourcesPanel
           providers={procurementSourceProviders}

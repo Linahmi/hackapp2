@@ -12,18 +12,14 @@ import {
 import { useRouter } from "next/navigation"
 import {
   CalendarBlank,
-  Cursor,
   CaretDown,
-  Circle,
   CurrencyDollar,
   GearSix,
   Hash,
   Laptop,
   Lightning,
-  MagicWand,
   MapPin,
   PaperPlaneTilt,
-  Plus,
   Tag,
   type IconProps,
 } from "phosphor-react"
@@ -195,7 +191,7 @@ function isRequiredForSubmit(
   field: ProcurementFieldKey,
   ignoredFields: Set<ProcurementFieldKey>
 ) {
-  return field !== "constraints" && !ignoredFields.has(field)
+  return field !== "constraints" && field !== "specifications" && field !== "priority" && !ignoredFields.has(field)
 }
 
 function buildProcurementSearchPayload(
@@ -624,23 +620,36 @@ export function AIPrompt() {
   const selectedModelData = models.find((m) => m.name === selectedModel)
 
   return (
-    <div className="w-full max-w-3xl mx-auto flex flex-col gap-4">
+    <div className="w-full max-w-2xl mx-auto flex flex-col gap-4">
       {/* Input box */}
-      <div className="rounded-2xl border border-border bg-card p-4">
+      <div
+        className="rounded-[7px] border p-4"
+        style={{
+          background: "var(--p-surface)",
+          borderColor: "var(--p-border)",
+          boxShadow: "var(--p-shadow-1)",
+        }}
+      >
         {trimmedInput && (
           <div className="mb-3">
-            <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
+            <div
+              className="mb-1.5 flex items-center justify-between text-xs"
+              style={{ color: "var(--p-muted)" }}
+            >
               <span>Requirement completeness</span>
-              <span>
+              <span className="font-mono">
                 {isExtracting && !currentExtraction
-                  ? "Checking"
+                  ? "Checking…"
                   : `${completionPercentage}%`}
               </span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-1 overflow-hidden rounded-full"
+              style={{ background: "var(--p-surface-alt)" }}
+            >
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
-                style={{ width: `${completionPercentage}%` }}
+                className="h-full rounded-full transition-[width] duration-300 ease-out"
+                style={{ width: `${completionPercentage}%`, background: "var(--p-accent)" }}
               />
             </div>
           </div>
@@ -649,7 +658,8 @@ export function AIPrompt() {
         <div className="relative min-h-[80px]">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 whitespace-pre-wrap break-words text-base leading-6 text-foreground"
+            className="pointer-events-none absolute inset-0 whitespace-pre-wrap break-words text-[14px] leading-6"
+            style={{ color: "var(--p-ink)" }}
           >
             {rawText
               ? renderHighlightedPromptText(rawText, highlightSpans, ignoredFields)
@@ -657,6 +667,7 @@ export function AIPrompt() {
           </div>
           <textarea
             ref={textareaRef}
+            autoFocus
             value={rawText}
             onChange={(e) => {
               selectionRef.current = {
@@ -683,7 +694,8 @@ export function AIPrompt() {
             onKeyUp={captureSelection}
             onMouseUp={captureSelection}
             placeholder="Describe your procurement need — product, quantity, budget, timeline..."
-            className="relative z-10 w-full resize-none bg-transparent text-base leading-6 text-transparent caret-foreground placeholder:text-muted-foreground focus:outline-none min-h-[80px]"
+            className="procura-textarea relative z-10 w-full resize-none bg-transparent text-[14px] leading-6 text-transparent focus:outline-none min-h-[80px]"
+            style={{ caretColor: "var(--p-ink)" }}
             rows={2}
           />
         </div>
@@ -769,35 +781,6 @@ export function AIPrompt() {
         )}
 
         <div className="flex items-center gap-1 mt-3">
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            aria-label="Add attachment"
-          >
-            <Plus size={18} weight="bold" />
-          </button>
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            aria-label="AI suggestions"
-          >
-            <MagicWand size={18} weight="fill" />
-          </button>
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            aria-label="Circle tool"
-          >
-            <Circle size={18} weight="duotone" />
-          </button>
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            aria-label="Select tool"
-          >
-            <Cursor size={18} weight="bold" />
-          </button>
-
           <div className="flex-1" />
 
           <Select.Root
@@ -833,7 +816,8 @@ export function AIPrompt() {
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex h-9 w-9 items-center justify-center rounded-[5px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: "var(--p-accent)", color: "white" }}
             aria-label="Submit"
           >
             <PaperPlaneTilt size={16} weight="fill" />

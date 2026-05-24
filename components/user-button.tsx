@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { authClient } from "@/lib/auth-client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -14,8 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { GearSix, SignOut } from "phosphor-react"
-import { SettingsDialog } from "@/components/settings-dialog"
+import { SignOut } from "phosphor-react"
 
 function getInitials(name: string) {
   const parts = name.trim().split(" ")
@@ -26,8 +24,6 @@ function getInitials(name: string) {
 export function UserButton() {
   const router = useRouter()
   const { data: session, isPending } = authClient.useSession()
-  const [settingsOpen, setSettingsOpen] = useState(false)
-
   if (isPending) return null
 
   if (!session?.user) {
@@ -80,24 +76,12 @@ export function UserButton() {
             </DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              className="cursor-pointer gap-2 text-foreground"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <GearSix size={16} weight="fill" />
-              Settings
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer gap-2 text-foreground">
             <SignOut size={16} />
             Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   )
 }

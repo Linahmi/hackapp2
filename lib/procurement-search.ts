@@ -292,26 +292,10 @@ function hasRequiredField(
 }
 
 function validateReadyRequest(request: ProcurementSearchRequest) {
-  if (!request.readyToSubmit) {
-    return "Request is not marked ready to submit."
+  // Only block if we have no idea what to search for
+  if (!request.fields.resourceType?.value) {
+    return "Please describe what you need — for example: '50 laptops', 'PCR reagents', 'HVAC filters'."
   }
-
-  const ignoredFields = new Set(request.ignoredFields)
-  const enabledRequiredFields = requiredProcurementFieldKeys.filter(
-    (field) => !ignoredFields.has(field)
-  )
-
-  for (const field of enabledRequiredFields) {
-    if (!hasRequiredField(request.fields, field)) {
-      return `Required field '${field}' is missing.`
-    }
-
-    const detectedField = request.fields[field]
-    if (detectedField && detectedField.confidence < MIN_CRITICAL_CONFIDENCE) {
-      return `Required field '${field}' confidence is too low.`
-    }
-  }
-
   return null
 }
 

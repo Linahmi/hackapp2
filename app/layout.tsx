@@ -1,36 +1,30 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "streamdown/styles.css";
-import { Inter, Instrument_Serif } from "next/font/google";
+import { Outfit, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
-import { Header } from "@/components/header";
 import { ThemeProvider } from "@/components/theme-provider";
-import { AgentationDev } from "@/app/components/agentation-dev";
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
+// Outfit — clean geometric grotesk matching the Procora brand
+const outfit = Outfit({ subsets: ['latin'], variable: '--font-sans', weight: ['400','500','600','700'] });
 const instrumentSerif = Instrument_Serif({ subsets: ['latin'], weight: '400', variable: '--font-instrument-serif' });
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono', weight: ['400','500'] });
 
 export const metadata: Metadata = {
-  title: "hackappv2",
-  description: "Minimal Next.js starter with Drizzle, Better Auth, shadcn/ui, Motion, and Zustand.",
+  title: "Procora",
+  description: "Procurement workflow — AI sourcing, RFQs, audit trail.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
-      className={cn("font-sans", inter.variable, instrumentSerif.variable)}
+      className={cn("font-sans", outfit.variable, instrumentSerif.variable, jetbrainsMono.variable)}
       suppressHydrationWarning
     >
       <body>
         <ThemeProvider>
-          <Header />
           {children}
-          <AgentationDev />
         </ThemeProvider>
       </body>
     </html>

@@ -365,6 +365,34 @@
   font-size: 0.76rem;
 }
 
+.expandedFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.collapseBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  border: 1px solid var(--result-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--result-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1;
+  padding: 0.42rem 0.62rem;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.collapseBtn:hover {
+  border-color: var(--result-border-strong);
+  color: var(--foreground);
+}
+
 .sourceLink {
   display: inline-flex;
   width: fit-content;
