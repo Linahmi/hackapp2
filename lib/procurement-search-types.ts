@@ -84,6 +84,14 @@ export type ProcurementSearchResponse = {
       website: string
     }
     matchedFields: ProcurementFieldKey[]
+    metricEvidence?: Record<
+      string,
+      {
+        evidenceCount: number
+        matchedSignals: string[]
+        source: string
+      }
+    >
     metrics?: {
       budgetFit: number
       bulkFit: number

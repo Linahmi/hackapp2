@@ -44,6 +44,18 @@ const supplierResultSchema = z
       })
       .strict(),
     matchedFields: z.array(procurementFieldSchema),
+    metricEvidence: z
+      .record(
+        z.string(),
+        z
+          .object({
+            evidenceCount: z.number().int().min(0),
+            matchedSignals: z.array(z.string()),
+            source: z.string(),
+          })
+          .strict()
+      )
+      .optional(),
     metrics: z
       .object({
         budgetFit: z.number().min(0).max(1),

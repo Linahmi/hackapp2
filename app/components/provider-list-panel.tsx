@@ -10,7 +10,7 @@ export type RankedProvider = {
   score: number;
   reasoning: string;
   matchedFields?: string[];
-  metrics?: { label: string; value: number }[];
+  metrics?: { evidence?: string[]; label: string; source?: string; value: number }[];
   snippet?: string;
   tags?: string[];
   warnings?: string[];
@@ -154,6 +154,9 @@ function CompanyResultCard({
                   <span key={`${provider.url}-${metric.label}`}>
                     <strong>{metric.label}</strong>
                     {Math.round(metric.value * 100)}%
+                    {metric.evidence?.length ? (
+                      <small>{metric.evidence.slice(0, 4).join(", ")}</small>
+                    ) : null}
                   </span>
                 ))}
               </div>

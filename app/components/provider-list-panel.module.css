@@ -365,6 +365,13 @@
   font-size: 0.76rem;
 }
 
+.metricDetailGrid small {
+  color: var(--result-muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .expandedFooter {
   display: flex;
   align-items: center;

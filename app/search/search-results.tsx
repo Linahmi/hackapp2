@@ -307,14 +307,16 @@ function procurementProviders(response: ProcurementSearchResponse): Provider[] {
     const warnings = result.warnings.length
       ? ` Warnings: ${result.warnings.slice(0, 2).join(" ")}`
       : ""
+    const evidenceFor = (metric: string) =>
+      result.metricEvidence?.[metric]?.matchedSignals ?? []
     const metrics = result.metrics
       ? [
-          { label: "Resource", value: result.metrics.resourceFit },
-          { label: "Specs", value: result.metrics.specificationFit },
-          { label: "Location", value: result.metrics.locationFit },
-          { label: "Bulk", value: result.metrics.bulkFit },
-          { label: "Delivery", value: result.metrics.deliveryFit },
-          { label: "Reliability", value: result.metrics.reliability },
+          { evidence: evidenceFor("resourceFit"), label: "Resource", value: result.metrics.resourceFit },
+          { evidence: evidenceFor("specificationFit"), label: "Specs", value: result.metrics.specificationFit },
+          { evidence: evidenceFor("locationFit"), label: "Location", value: result.metrics.locationFit },
+          { evidence: evidenceFor("bulkFit"), label: "Bulk", value: result.metrics.bulkFit },
+          { evidence: evidenceFor("deliveryFit"), label: "Delivery", value: result.metrics.deliveryFit },
+          { evidence: evidenceFor("reliability"), label: "Reliability", value: result.metrics.reliability },
         ]
       : undefined
 

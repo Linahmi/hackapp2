@@ -158,6 +158,15 @@ export type ProcurementSearchMetrics = {
   specificationFit: number
 }
 
+export type ProcurementMetricEvidence = Partial<Record<
+  keyof ProcurementSearchMetrics,
+  {
+    evidenceCount: number
+    matchedSignals: string[]
+    source: string
+  }
+>>
+
 export type ProcurementSupplierResult = {
   companyName: string
   domain: string
@@ -169,6 +178,7 @@ export type ProcurementSupplierResult = {
     website: string
   }
   matchedFields: ProcurementFieldKey[]
+  metricEvidence?: ProcurementMetricEvidence
   metrics: ProcurementSearchMetrics
   score: number
   snippet: string
@@ -192,7 +202,15 @@ export type ProcurementSearchResponse = {
 
 type ExaResult = {
   highlights?: string[]
+  highlightScores?: number[]
+  links?: string[]
   score?: number
+  subpages?: Array<{
+    highlights?: string[]
+    summary?: string
+    text?: string
+  }>
+  summary?: string
   text?: string
   title: string | null
   url: string
@@ -216,6 +234,17 @@ function words(value: string) {
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean)
+}
+
+function foldSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+}
+
+function searchWords(value: string) {
+  return foldSearchText(normalizeText(value)).match(/[a-z0-9]+/g) ?? []
 }
 
 function toTitleCase(value: string) {
@@ -460,7 +489,7 @@ function searchableSpecs(specifications: string[]) {
 }
 
 function compactText(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "")
+  return foldSearchText(value).replace(/[^a-z0-9]+/g, "")
 }
 
 function normalizeDomain(url: string) {
@@ -490,6 +519,17 @@ function locationTerms(request: NormalizedProcurementRequest) {
     request.locationRegion,
     request.locationCountry,
   ])
+}
+
+function splitLocationTerms(value?: string) {
+  if (!value) return []
+
+  return uniqueStrings(
+    value
+      .split(/\s+(?:and|or)\s+|[,;/&]+/i)
+      .map(normalizeText)
+      .filter((term) => term.length > 1)
+  )
 }
 
 function constraintQueryTerms(request: NormalizedProcurementRequest) {
@@ -555,6 +595,28 @@ function buildExaQuery(request: NormalizedProcurementRequest) {
   return buildExaQueryVariants(request)[0] ?? "enterprise procurement supplier quote"
 }
 
+function buildEvidenceQuery(request: NormalizedProcurementRequest) {
+  const resource = request.resourceType ?? "requested product"
+  const specs = request.specifications.length
+    ? request.specifications.join(", ")
+    : "requested technical specifications"
+  const location = locationTerms(request).join(", ") || "requested delivery region"
+  const quantity = request.quantity ? `${request.quantity} units` : "bulk quantity"
+  const budget = request.budget
+    ? `${request.budget.amount} ${request.budget.currency} ${request.budget.type} budget`
+    : "pricing or quote evidence"
+
+  return [
+    "Find procurement evidence on this supplier page for",
+    resource,
+    specs,
+    quantity,
+    location,
+    budget,
+    "including product availability, B2B or bulk quote support, delivery or service area, pricing clues, compliance, warranty, certifications, supplier reliability, contact sales, catalog, and request quote information.",
+  ].join(" ")
+}
+
 function buildWarnings(request: NormalizedProcurementRequest) {
   const warnings: string[] = []
   const quantity = request.quantity ?? 0
@@ -599,18 +661,26 @@ function resultSnippet(result: ExaResult) {
   return `${cleaned.slice(0, 257)}...`
 }
 
-function linkHints(url: string) {
+function findLinkByTerms(links: string[], terms: string[]) {
+  return links.find((link) => hasAnyTerm(link, terms))
+}
+
+function linkHints(result: ExaResult) {
+  const url = result.url
+  const links = [url, ...(result.links ?? [])]
   const lower = url.toLowerCase()
   return {
-    contact: lower.includes("contact") ? url : undefined,
+    contact: findLinkByTerms(links, ["contact", "sales", "support"]),
     product:
-      lower.includes("product") || lower.includes("catalog") || lower.includes("shop")
+      findLinkByTerms(links, ["product", "catalog", "shop", "store"]) ??
+      (lower.includes("product") || lower.includes("catalog") || lower.includes("shop")
         ? url
-        : undefined,
+        : undefined),
     quote:
-      lower.includes("quote") || lower.includes("quotation") || lower.includes("rfq")
+      findLinkByTerms(links, ["quote", "quotation", "rfq", "request"]) ??
+      (lower.includes("quote") || lower.includes("quotation") || lower.includes("rfq")
         ? url
-        : undefined,
+        : undefined),
     website: originFromUrl(url),
   }
 }
@@ -626,10 +696,10 @@ function supplierNameFromResult(result: ExaResult) {
 }
 
 function textMatches(haystack: string, needle: string, mode: "any" | "all" = "any") {
-  const normalizedHaystack = haystack.toLowerCase()
+  const normalizedHaystack = foldSearchText(haystack)
   const compactHaystack = compactText(haystack)
-  const normalizedNeedle = needle.toLowerCase()
-  const terms = words(needle).filter((word) => word.length > 1)
+  const normalizedNeedle = foldSearchText(needle)
+  const terms = searchWords(needle).filter((word) => word.length > 1)
 
   if (!terms.length) return false
   if (normalizedHaystack.includes(normalizedNeedle) || compactHaystack.includes(compactText(needle))) {
@@ -645,7 +715,453 @@ function textMatches(haystack: string, needle: string, mode: "any" | "all" = "an
 }
 
 function hasAnyTerm(content: string, terms: string[]) {
-  return terms.some((term) => content.includes(term))
+  const normalizedContent = foldSearchText(content)
+  const contentWords = new Set(searchWords(content))
+
+  return terms.some((term) => {
+    const normalizedTerm = foldSearchText(term).trim()
+    if (!normalizedTerm) return false
+
+    const termWords = searchWords(normalizedTerm)
+    if (termWords.length === 1 && normalizedTerm.length <= 3) {
+      return contentWords.has(normalizedTerm)
+    }
+
+    return normalizedContent.includes(normalizedTerm)
+  })
+}
+
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value))
+}
+
+function uniqueMatchedTerms(content: string, terms: string[]) {
+  return uniqueStrings(
+    terms.filter((term) => term.trim().length > 1 && hasAnyTerm(content, [term]))
+  )
+}
+
+function weightedTermScore(
+  content: string,
+  groups: Array<{ terms: string[]; weight: number }>,
+  base = 0.12
+) {
+  let score = base
+  const matchedSignals: string[] = []
+
+  for (const group of groups) {
+    const matches = uniqueMatchedTerms(content, group.terms)
+    if (matches.length === 0) continue
+
+    const matchRatio = Math.min(1, matches.length / Math.max(1, Math.min(group.terms.length, 4)))
+    score += group.weight * matchRatio
+    matchedSignals.push(...matches.slice(0, 5))
+  }
+
+  return {
+    evidence: uniqueStrings(matchedSignals).slice(0, 10),
+    score: clamp01(score),
+  }
+}
+
+function scoredEvidence(
+  score: number,
+  matchedSignals: string[],
+  source = "Exa page text, highlights, summaries, subpages, URL, and result score"
+) {
+  return {
+    evidenceCount: matchedSignals.length,
+    matchedSignals: uniqueStrings(matchedSignals).slice(0, 10),
+    source,
+    score: Number(clamp01(score).toFixed(2)),
+  }
+}
+
+function resultContentForScoring(result: ExaResult) {
+  const subpageContent =
+    result.subpages
+      ?.flatMap((subpage) => [
+        subpage.text,
+        ...(subpage.highlights ?? []),
+      ])
+      .filter(Boolean)
+      .join(" ") ?? ""
+  const linkContent = result.links?.join(" ") ?? ""
+
+  return [
+    result.title,
+    result.url,
+    result.text,
+    ...(result.highlights ?? []),
+    subpageContent,
+    linkContent,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+}
+
+function contentDepthScore(result: ExaResult) {
+  const textLength = [
+    result.text,
+    ...(result.highlights ?? []),
+    ...(result.subpages?.map((subpage) => subpage.text ?? "") ?? []),
+  ].join(" ").length
+
+  return clamp01(textLength / 7000)
+}
+
+const countryAliasTerms: Record<string, string[]> = {
+  austria: ["osterreich"],
+  belgium: ["belgie", "belgique"],
+  canada: ["canadian"],
+  france: ["french"],
+  germany: ["deutschland", "bundesweit", "dach"],
+  italy: ["italia"],
+  netherlands: ["nederland", "holland"],
+  spain: ["espana"],
+  switzerland: ["swiss", "schweiz", "suisse", "svizzera"],
+  "united kingdom": ["uk", "u k", "great britain", "britain", "gb"],
+  "united states": ["usa", "u s", "america"],
+}
+
+const countryCodeOverrides: Record<string, string> = {
+  uk: "United Kingdom",
+}
+
+const regionCoverageTerms = [
+  "apac",
+  "dach",
+  "emea",
+  "eu",
+  "europe",
+  "european union",
+  "global",
+  "international",
+  "worldwide",
+]
+
+const deliveryLocationSignalTerms = [
+  "availability",
+  "available",
+  "branches",
+  "countrywide",
+  "deliver",
+  "delivers",
+  "delivery",
+  "distribution",
+  "expedition",
+  "fulfillment",
+  "locations",
+  "logistics",
+  "nationwide",
+  "regional",
+  "service area",
+  "serves",
+  "ship",
+  "shipping",
+  "standorte",
+  "versand",
+  "warehouse",
+]
+
+const supplierReliabilityTerms = [
+  "about us",
+  "authorized",
+  "certified",
+  "company",
+  "contact",
+  "customer service",
+  "distributor",
+  "enterprise",
+  "established",
+  "manufacturer",
+  "partner",
+  "privacy policy",
+  "reseller",
+  "service",
+  "support",
+  "terms",
+  "warranty",
+]
+
+const resourceCategoryTerms = [
+  "business hardware",
+  "computer equipment",
+  "hardware",
+  "it equipment",
+  "it hardware",
+  "peripherals",
+  "workplace technology",
+]
+
+const productCommerceTerms = [
+  "add to cart",
+  "availability",
+  "available",
+  "buy",
+  "catalog",
+  "in stock",
+  "product",
+  "quote",
+  "request quote",
+  "shop",
+  "sku",
+]
+
+const bulkProcurementTerms = [
+  "b2b",
+  "bulk",
+  "business account",
+  "corporate",
+  "distributor",
+  "enterprise",
+  "framework agreement",
+  "large order",
+  "procurement",
+  "quote",
+  "request quote",
+  "reseller",
+  "rfq",
+  "sales",
+  "tender",
+  "volume",
+  "wholesale",
+]
+
+const budgetEvidenceTerms = [
+  "budget",
+  "discount",
+  "eur",
+  "euro",
+  "financing",
+  "leasing",
+  "price",
+  "pricing",
+  "quote",
+  "quotation",
+  "request quote",
+  "volume discount",
+]
+
+const deliveryEvidenceTerms = [
+  ...deliveryLocationSignalTerms,
+  "available for delivery",
+  "dispatch",
+  "express delivery",
+  "in stock",
+  "lead time",
+  "next day",
+  "same day",
+  "shipping options",
+]
+
+const complianceEvidenceTerms = [
+  "approved supplier",
+  "certification",
+  "certified",
+  "compliance",
+  "gdpr",
+  "hipaa",
+  "iso",
+  "iso 27001",
+  "quality management",
+  "soc 2",
+  "soc2",
+  "sustainability",
+  "warranty",
+]
+
+const consumerOrContentOnlyTerms = [
+  "benchmark",
+  "blog",
+  "forum",
+  "guide",
+  "how to",
+  "news",
+  "reddit",
+  "review",
+]
+
+function resourceTerms(request: NormalizedProcurementRequest) {
+  const resource = request.resourceType ?? ""
+  const lower = resource.toLowerCase()
+  const terms = [resource]
+
+  if (lower.includes("dock")) {
+    terms.push(
+      "dock",
+      "docking station",
+      "docking stations",
+      "laptop dock",
+      "notebook dock",
+      "usb c dock",
+      "usb-c dock",
+      "thunderbolt dock"
+    )
+  }
+  if (lower.includes("computer")) terms.push("computer", "computers", "desktop", "workstation")
+  if (lower.includes("laptop")) terms.push("laptop", "notebook", "business laptop")
+  if (lower.includes("monitor")) terms.push("monitor", "display", "screen")
+  if (lower.includes("server")) terms.push("server", "rack server", "data center")
+
+  return uniqueStrings(terms)
+}
+
+function normalizedCountryKey(value?: string | null) {
+  return foldSearchText(value ?? "").replace(/[^a-z0-9]+/g, " ").trim()
+}
+
+function countryTerms(country?: string) {
+  const countryKey = normalizedCountryKey(country)
+  if (!countryKey) return []
+
+  return uniqueStrings([country, countryKey, ...(countryAliasTerms[countryKey] ?? [])])
+}
+
+function countryFromUrl(url: string) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase()
+    const tld = hostname.split(".").at(-1)
+    if (!tld || tld.length !== 2) return null
+
+    if (countryCodeOverrides[tld]) return countryCodeOverrides[tld]
+
+    const displayNames = new Intl.DisplayNames(["en"], { type: "region" })
+    const country = displayNames.of(tld.toUpperCase())
+    return country && country.toUpperCase() !== tld.toUpperCase() ? country : null
+  } catch {
+    return null
+  }
+}
+
+function countriesEquivalent(left?: string | null, right?: string | null) {
+  if (!left || !right) return false
+
+  const leftTerms = countryTerms(left).map(normalizedCountryKey)
+  const rightTerms = countryTerms(right).map(normalizedCountryKey)
+
+  return leftTerms.some((leftTerm) => rightTerms.includes(leftTerm))
+}
+
+function locationFitScore(
+  result: ExaResult,
+  content: string,
+  request: NormalizedProcurementRequest
+) {
+  if (!request.location) {
+    return scoredEvidence(0.55, [], "No requested location")
+  }
+
+  const requestedPlaceTerms = uniqueStrings([
+    ...splitLocationTerms(request.location),
+    ...splitLocationTerms(request.locationRegion),
+  ])
+  const requestedCountryTerms = countryTerms(request.locationCountry)
+  const placeMatches = requestedPlaceTerms.filter((term) => textMatches(content, term))
+  const countryMatches = requestedCountryTerms.filter((term) => textMatches(content, term))
+  const domainCountry = countryFromUrl(result.url)
+  const domainCountryMatches = countriesEquivalent(domainCountry, request.locationCountry)
+  const hasDeliveryLocationSignal = hasAnyTerm(content, deliveryLocationSignalTerms)
+  const hasSupplierMarketSignal = procurementIntentSignal(content)
+  const hasRegionalCoverageSignal = hasAnyTerm(content, regionCoverageTerms)
+  const matchedSignals = uniqueStrings([
+    ...placeMatches,
+    ...countryMatches,
+    ...(domainCountryMatches && domainCountry ? [`domain:${domainCountry}`] : []),
+    ...(hasDeliveryLocationSignal ? uniqueMatchedTerms(content, deliveryLocationSignalTerms).slice(0, 3) : []),
+    ...(hasRegionalCoverageSignal ? uniqueMatchedTerms(content, regionCoverageTerms).slice(0, 2) : []),
+  ])
+
+  let score = 0.22
+
+  if (requestedPlaceTerms.length > 0 && placeMatches.length > 0) {
+    const placeRatio = placeMatches.length / requestedPlaceTerms.length
+    score = Math.max(score, placeRatio >= 1 ? 0.96 : 0.78)
+  }
+
+  if (countryMatches.length > 0) {
+    score = Math.max(score, hasDeliveryLocationSignal ? 0.86 : 0.72)
+  }
+
+  if (domainCountryMatches) {
+    score = Math.max(score, hasDeliveryLocationSignal ? 0.7 : hasSupplierMarketSignal ? 0.66 : 0.52)
+  }
+
+  if (hasRegionalCoverageSignal && requestedCountryTerms.length > 0) {
+    score = Math.max(score, hasDeliveryLocationSignal ? 0.64 : 0.48)
+  }
+
+  if (score >= 0.65 && hasDeliveryLocationSignal) {
+    score = Math.min(1, score + 0.06)
+  }
+
+  return scoredEvidence(
+    score,
+    matchedSignals,
+    "Location terms, country/domain market signals, and delivery-region evidence from Exa"
+  )
+}
+
+const specificationStopWords = new Set([
+  "and",
+  "are",
+  "for",
+  "from",
+  "the",
+  "with",
+  "into",
+  "onto",
+  "that",
+  "this",
+  "existing",
+  "fleet",
+  "required",
+  "compatible",
+])
+
+const specificationBoostWords = new Set([
+  "compatible",
+  "compatibility",
+  "dell",
+  "hp",
+  "lenovo",
+  "apple",
+  "macbook",
+  "thinkpad",
+  "latitude",
+  "laptop",
+  "usb",
+  "usb-c",
+  "thunderbolt",
+  "displayport",
+  "hdmi",
+  "rtx",
+  "nvidia",
+  "intel",
+  "amd",
+])
+
+function specTokens(spec: string) {
+  const tokens = words(spec)
+    .flatMap((word) => word.split(/[-_]/))
+    .map((word) => word.trim().toLowerCase())
+    .filter((word) => word.length >= 2)
+
+  return uniqueValues(
+    tokens.filter((token) => !specificationStopWords.has(token) || specificationBoostWords.has(token))
+  )
+}
+
+function tokenMatches(content: string, token: string) {
+  const singular = token.endsWith("s") ? token.slice(0, -1) : token
+  const compactContent = compactText(content)
+
+  return (
+    content.includes(token) ||
+    content.includes(singular) ||
+    compactContent.includes(compactText(token))
+  )
 }
 
 function metricFromMatches(total: number, matched: number, emptyValue = 0.5) {
@@ -654,100 +1170,238 @@ function metricFromMatches(total: number, matched: number, emptyValue = 0.5) {
 }
 
 function negativeContentSignal(content: string) {
-  return hasAnyTerm(content, [
-    "blog",
-    "review",
-    "forum",
-    "reddit",
-    "news",
-    "article",
-    "how to",
-    "guide",
-    "benchmark",
-  ])
+  return hasAnyTerm(content, [...consumerOrContentOnlyTerms, "article"])
 }
 
 function procurementIntentSignal(content: string) {
-  return hasAnyTerm(content, [
-    "supplier",
-    "distributor",
-    "reseller",
-    "wholesale",
-    "enterprise",
-    "business",
-    "b2b",
-    "procurement",
-    "quote",
-    "quotation",
-    "rfq",
-    "catalog",
-    "sales",
-    "availability",
-    "volume",
-  ])
+  return hasAnyTerm(content, [...bulkProcurementTerms, "availability", "business", "catalog", "supplier"])
+}
+
+function specificationFitScore(content: string, request: NormalizedProcurementRequest) {
+  if (request.specifications.length === 0) {
+    return scoredEvidence(0.55, [], "No requested specifications")
+  }
+
+  const tokenGroups = request.specifications.map(specTokens).filter((tokens) => tokens.length > 0)
+  const allTokens = uniqueValues(tokenGroups.flat())
+  if (allTokens.length === 0) {
+    return scoredEvidence(0.55, [], "No searchable specification tokens")
+  }
+
+  const matchedTokens = allTokens.filter((token) => tokenMatches(content, token))
+  const tokenRatio = matchedTokens.length / allTokens.length
+  const matchedPhrases = request.specifications.filter(
+    (spec) => searchWords(spec).length <= 3 && textMatches(content, spec)
+  )
+  const phraseRatio = metricFromMatches(
+    request.specifications.length,
+    matchedPhrases.length,
+    0
+  )
+  const compatibilityBoost =
+    request.specifications.some((spec) => /compatible|compatibility/i.test(spec)) &&
+    hasAnyTerm(content, ["compatible", "compatibility", "works with", "for dell", "dell laptop"])
+      ? 0.14
+      : 0
+  const resourceBoost =
+    request.resourceType && textMatches(content, request.resourceType)
+      ? 0.08
+      : 0
+
+  return scoredEvidence(
+    tokenRatio * 0.72 + phraseRatio * 0.18 + compatibilityBoost + resourceBoost,
+    [...matchedTokens, ...matchedPhrases],
+    "Requested specification tokens and Exa page evidence"
+  )
+}
+
+function resourceFitScore(content: string, request: NormalizedProcurementRequest) {
+  if (!request.resourceType) return scoredEvidence(0.5, [], "No requested resource type")
+
+  const primaryTerms = resourceTerms(request)
+  const primaryMatches = uniqueMatchedTerms(content, primaryTerms)
+  const grouped = weightedTermScore(
+    content,
+    [
+      { terms: primaryTerms, weight: 0.56 },
+      { terms: resourceCategoryTerms, weight: 0.16 },
+      { terms: productCommerceTerms, weight: 0.16 },
+    ],
+    0.08
+  )
+
+  return scoredEvidence(
+    grouped.score,
+    [...primaryMatches, ...grouped.evidence],
+    "Requested resource terms plus product/catalog evidence from Exa"
+  )
+}
+
+function bulkFitScore(content: string, request: NormalizedProcurementRequest) {
+  const quantitySignals =
+    request.quantity && request.quantity >= 50
+      ? ["bulk", "large order", "volume", "enterprise", "business", "quote"]
+      : ["business", "quote", "sales"]
+  const grouped = weightedTermScore(
+    content,
+    [
+      { terms: bulkProcurementTerms, weight: 0.55 },
+      { terms: quantitySignals, weight: 0.25 },
+      { terms: productCommerceTerms, weight: 0.1 },
+    ],
+    negativeContentSignal(content) ? 0.04 : 0.12
+  )
+
+  return scoredEvidence(
+    negativeContentSignal(content) ? grouped.score * 0.55 : grouped.score,
+    grouped.evidence,
+    "B2B, quote, wholesale, and volume-order signals from Exa"
+  )
+}
+
+function budgetFitScore(content: string, request: NormalizedProcurementRequest) {
+  if (!request.budget) return scoredEvidence(0.55, [], "No requested budget")
+
+  const currencyTerms = [
+    request.budget.currency,
+    request.budget.currency === "EUR" ? "euro" : null,
+    request.budget.currency === "USD" ? "dollar" : null,
+  ].filter(Boolean) as string[]
+  const grouped = weightedTermScore(
+    content,
+    [
+      { terms: budgetEvidenceTerms, weight: 0.48 },
+      { terms: currencyTerms, weight: 0.14 },
+      { terms: ["quote", "pricing", "discount", "volume discount"], weight: 0.18 },
+    ],
+    0.18
+  )
+
+  return scoredEvidence(grouped.score, grouped.evidence, "Pricing, quote, discount, and currency evidence from Exa")
+}
+
+function deliveryFitScore(content: string, request: NormalizedProcurementRequest) {
+  const deliveryTimingTerms = request.deliveryDate
+    ? ["delivery", "lead time", "availability", "in stock", "shipping", "dispatch"]
+    : ["delivery", "shipping", "availability"]
+  const grouped = weightedTermScore(
+    content,
+    [
+      { terms: deliveryEvidenceTerms, weight: 0.5 },
+      { terms: deliveryTimingTerms, weight: 0.22 },
+      { terms: regionCoverageTerms, weight: 0.1 },
+    ],
+    0.16
+  )
+
+  return scoredEvidence(grouped.score, grouped.evidence, "Delivery, shipping, stock, lead-time, and region evidence from Exa")
+}
+
+function complianceFitScore(content: string, request: NormalizedProcurementRequest) {
+  const requestedComplianceTerms = request.constraints.filter((constraint) =>
+    /approved|cert|compliance|gdpr|hipaa|iso|soc|sustain|warranty/i.test(constraint)
+  )
+  const grouped = weightedTermScore(
+    content,
+    [
+      { terms: complianceEvidenceTerms, weight: 0.48 },
+      { terms: requestedComplianceTerms, weight: 0.22 },
+      { terms: ["approved supplier", "authorized", "partner", "warranty"], weight: 0.16 },
+    ],
+    requestedComplianceTerms.length > 0 ? 0.1 : 0.32
+  )
+
+  return scoredEvidence(grouped.score, grouped.evidence, "Compliance, certification, approved-supplier, and warranty evidence from Exa")
+}
+
+function reliabilityScore(result: ExaResult, content: string) {
+  const grouped = weightedTermScore(
+    content,
+    [
+      { terms: supplierReliabilityTerms, weight: 0.32 },
+      { terms: bulkProcurementTerms, weight: 0.18 },
+      { terms: productCommerceTerms, weight: 0.14 },
+    ],
+    0.18
+  )
+  const exaScoreBoost = clamp01(result.score ?? 0) * 0.18
+  const depthBoost = contentDepthScore(result) * 0.1
+  const negativePenalty = negativeContentSignal(content) ? 0.28 : 0
+
+  return scoredEvidence(
+    grouped.score + exaScoreBoost + depthBoost - negativePenalty,
+    grouped.evidence,
+    "Supplier intent, official-site signals, Exa relevance, content depth, and negative source penalties"
+  )
 }
 
 function scoreMetrics(result: ExaResult, request: NormalizedProcurementRequest) {
   const snippet = resultSnippet(result)
-  const content = `${result.title ?? ""} ${result.url} ${snippet} ${result.text ?? ""}`.toLowerCase()
-  const specMatches = request.specifications.filter((spec) => textMatches(content, spec, "all"))
-  const locationValues = locationTerms(request)
-  const locationMatches = locationValues.filter((term) => textMatches(content, term))
-  const resourceFit = request.resourceType
-    ? textMatches(content, request.resourceType) ||
-      hasAnyTerm(content, ["hardware", "it equipment", "computer equipment", "workstation"])
-      ? 0.9
-      : 0.2
-    : 0.5
-  const specificationFit = metricFromMatches(request.specifications.length, specMatches.length, 0.55)
-  const locationFit = metricFromMatches(locationValues.length, locationMatches.length, request.location ? 0.25 : 0.55)
-  const bulkFit = procurementIntentSignal(content) ? 0.9 : negativeContentSignal(content) ? 0.15 : 0.45
-  const budgetFit = request.budget
-    ? hasAnyTerm(content, ["price", "pricing", "quote", "quotation", "discount", "volume"])
-      ? 0.68
-      : 0.45
-    : 0.55
-  const deliveryFit = hasAnyTerm(content, [
-    "delivery",
-    "shipping",
-    "ship",
-    "availability",
-    "in stock",
-    "logistics",
-    "lead time",
-  ])
-    ? 0.78
-    : 0.42
-  const complianceFit = hasAnyTerm(content, [
-    "iso",
-    "soc 2",
-    "soc2",
-    "gdpr",
-    "hipaa",
-    "certified",
-    "warranty",
-    "compliance",
-  ])
-    ? 0.78
-    : request.constraints.some((constraint) => /iso|soc|gdpr|hipaa|warranty|compliance/i.test(constraint))
-      ? 0.3
-      : 0.52
-  const reliability = negativeContentSignal(content)
-    ? 0.18
-    : procurementIntentSignal(content)
-      ? 0.82
-      : 0.58
+  const content = `${resultContentForScoring(result)} ${snippet}`.toLowerCase()
+  const resourceFit = resourceFitScore(content, request)
+  const specificationFit = specificationFitScore(content, request)
+  const locationFit = locationFitScore(result, content, request)
+  const bulkFit = bulkFitScore(content, request)
+  const budgetFit = budgetFitScore(content, request)
+  const deliveryFit = deliveryFitScore(content, request)
+  const complianceFit = complianceFitScore(content, request)
+  const reliability = reliabilityScore(result, content)
+  const metricEvidence: ProcurementMetricEvidence = {
+    budgetFit: {
+      evidenceCount: budgetFit.evidenceCount,
+      matchedSignals: budgetFit.matchedSignals,
+      source: budgetFit.source,
+    },
+    bulkFit: {
+      evidenceCount: bulkFit.evidenceCount,
+      matchedSignals: bulkFit.matchedSignals,
+      source: bulkFit.source,
+    },
+    complianceFit: {
+      evidenceCount: complianceFit.evidenceCount,
+      matchedSignals: complianceFit.matchedSignals,
+      source: complianceFit.source,
+    },
+    deliveryFit: {
+      evidenceCount: deliveryFit.evidenceCount,
+      matchedSignals: deliveryFit.matchedSignals,
+      source: deliveryFit.source,
+    },
+    locationFit: {
+      evidenceCount: locationFit.evidenceCount,
+      matchedSignals: locationFit.matchedSignals,
+      source: locationFit.source,
+    },
+    reliability: {
+      evidenceCount: reliability.evidenceCount,
+      matchedSignals: reliability.matchedSignals,
+      source: reliability.source,
+    },
+    resourceFit: {
+      evidenceCount: resourceFit.evidenceCount,
+      matchedSignals: resourceFit.matchedSignals,
+      source: resourceFit.source,
+    },
+    specificationFit: {
+      evidenceCount: specificationFit.evidenceCount,
+      matchedSignals: specificationFit.matchedSignals,
+      source: specificationFit.source,
+    },
+  }
 
   return {
-    budgetFit,
-    bulkFit,
-    complianceFit,
-    deliveryFit,
-    locationFit,
-    reliability,
-    resourceFit,
-    specificationFit,
-  } satisfies ProcurementSearchMetrics
+    evidence: metricEvidence,
+    metrics: {
+      budgetFit: budgetFit.score,
+      bulkFit: bulkFit.score,
+      complianceFit: complianceFit.score,
+      deliveryFit: deliveryFit.score,
+      locationFit: locationFit.score,
+      reliability: reliability.score,
+      resourceFit: resourceFit.score,
+      specificationFit: specificationFit.score,
+    } satisfies ProcurementSearchMetrics,
+  }
 }
 
 function weightedScore(metrics: ProcurementSearchMetrics, exaScore?: number) {
@@ -788,7 +1442,7 @@ function scoreResult(
   request: NormalizedProcurementRequest,
   requestWarnings: string[]
 ): ProcurementSupplierResult {
-  const metrics = scoreMetrics(result, request)
+  const { evidence, metrics } = scoreMetrics(result, request)
   const estimatedFit = Number(Math.min(0.99, Math.max(0.05, weightedScore(metrics, result.score))).toFixed(2))
   const score = Math.round(estimatedFit * 100)
   const matchedFields = matchedFieldsFromMetrics(metrics, request)
@@ -809,8 +1463,9 @@ function scoreResult(
     companyName: supplierName,
     domain: normalizeDomain(result.url),
     estimatedFit,
-    links: linkHints(result.url),
+    links: linkHints(result),
     matchedFields: uniqueValues(matchedFields),
+    metricEvidence: evidence,
     metrics,
     score,
     snippet: resultSnippet(result),
@@ -898,6 +1553,7 @@ export async function runProcurementSearch(
   const exa = new Exa(apiKey)
   const queryVariants = buildExaQueryVariants(normalized)
   const query = queryVariants[0] ?? buildExaQuery(normalized)
+  const evidenceQuery = buildEvidenceQuery(normalized)
   const warnings = buildWarnings(normalized)
   const resultCount = request.searchSettings?.resultCount ?? DEFAULT_RESULT_COUNT
   const searchType = request.searchSettings?.searchType ?? "auto"
@@ -907,12 +1563,25 @@ export async function runProcurementSearch(
     queryVariants.map((variant) =>
       exa.search(variant, {
         contents: {
+          extras: {
+            links: 12,
+          },
           highlights: {
-            maxCharacters: 360,
-            query: variant,
+            maxCharacters: 900,
+            query: evidenceQuery,
+          },
+          maxAgeHours: 168,
+          subpages: 2,
+          subpageTarget: [
+            normalized.resourceType ?? "product catalog",
+            "quote contact sales",
+            "delivery shipping locations",
+          ],
+          summary: {
+            query: evidenceQuery,
           },
           text: {
-            maxCharacters: 1800,
+            maxCharacters: 5000,
           },
         },
         excludeText: ["forum"],
