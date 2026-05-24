@@ -39,10 +39,14 @@ export function PhaseTimeline({ phases }: { phases: TimelinePhase[] }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
 
-  useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setMounted(true))
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
 
   const doneCount = phases.filter(p => p.status === "done").length
   const activePhase = phases.find(p => p.status === "active")
+  const activePhaseId = activePhase?.id ?? null
 
   // Push page content via CSS class on <html> — transform on [data-page-root]
   useEffect(() => {
@@ -52,8 +56,10 @@ export function PhaseTimeline({ phases }: { phases: TimelinePhase[] }) {
 
   // Auto-select the active phase when it changes
   useEffect(() => {
-    if (activePhase) setSelected(activePhase.id)
-  }, [activePhase?.id])
+    if (!activePhaseId) return
+    const frame = window.requestAnimationFrame(() => setSelected(activePhaseId))
+    return () => window.cancelAnimationFrame(frame)
+  }, [activePhaseId])
 
   useEffect(() => {
     if (!open) return

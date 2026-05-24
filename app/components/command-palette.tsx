@@ -32,10 +32,12 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   // Focus input when opened
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    const timeout = window.setTimeout(() => {
       setQuery("")
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
+      inputRef.current?.focus()
+    }, 50)
+    return () => window.clearTimeout(timeout)
   }, [open])
 
   // Escape to close

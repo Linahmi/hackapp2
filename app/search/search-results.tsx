@@ -297,6 +297,10 @@ function fieldLabel(field: string) {
   return labels[field] ?? field
 }
 
+function procurementResultName(result: ProcurementSearchResponse["results"][number] | null | undefined) {
+  return result?.supplierName || result?.title || ""
+}
+
 function procurementProviders(response: ProcurementSearchResponse): Provider[] {
   return response.results.map((result) => {
     const matched = result.matchedFields.map(fieldLabel).join(", ")
@@ -1249,7 +1253,7 @@ export function SearchResults({
 
   useEffect(() => {
     if (!isProcurementMode || selectedCompanyIndex === null) return
-    const name = procurementResponse?.results[selectedCompanyIndex]?.name
+    const name = procurementResultName(procurementResponse?.results[selectedCompanyIndex])
     if (name) logAudit("Company selected", name)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCompanyIndex])
@@ -1358,7 +1362,7 @@ export function SearchResults({
       auditEvents.find((e) => e.label === label)?.timestamp ?? ""
 
     const supplierCount = procurementResponse?.results?.length ?? 0
-    const selectedName = selectedCompany?.name ?? ""
+    const selectedName = procurementResultName(selectedCompany)
 
     return [
       {
