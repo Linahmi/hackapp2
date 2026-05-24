@@ -1005,16 +1005,16 @@ function AuditTrail({ events }: { events: AuditEvent[] }) {
                     position: "relative",
                   }}
                 />
-                <div className="min-w-0">
+                <div className="min-w-0 max-w-full">
                   <p
-                    className="text-[12px] font-medium leading-[1.3]"
+                    className="text-[12px] font-medium leading-[1.3] break-words"
                     style={{ color: "var(--p-ink)" }}
                   >
                     {event.label}
                   </p>
                   {event.detail && (
                     <p
-                      className="text-[11px] leading-[1.3] mt-[2px] truncate"
+                      className="text-[11px] leading-[1.3] mt-[2px] whitespace-normal break-words [overflow-wrap:anywhere]"
                       style={{ color: "var(--p-ink-2)" }}
                     >
                       {event.detail}
