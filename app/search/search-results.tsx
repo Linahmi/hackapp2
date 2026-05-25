@@ -744,11 +744,11 @@ function CompaniesStep({
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card p-4">
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
-      <div className="text-sm leading-relaxed text-foreground/85">{value}</div>
+      <div className="min-w-0 max-w-full text-sm leading-relaxed text-foreground/85">{value}</div>
     </div>
   )
 }
@@ -769,7 +769,7 @@ function DetailStatusBadge({ status }: { status: string }) {
 
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
+      className="inline-flex max-w-full flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
       style={{
         background: isPositive || isInferred
           ? "color-mix(in oklab, var(--p-accent), transparent 90%)"
@@ -789,6 +789,64 @@ function DetailStatusBadge({ status }: { status: string }) {
   )
 }
 
+function EvidenceCard({ item }: { item: ProcurementCompanyDetailsEvidence }) {
+  const domain = getDomainLocal(item.url)
+
+  return (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-primary/30"
+    >
+      <span className="block min-w-0 max-w-full whitespace-normal break-words text-xs font-medium leading-snug text-foreground line-clamp-2 [overflow-wrap:anywhere] group-hover:text-primary">
+        {item.title || domain}
+      </span>
+      <span className="mt-1 block min-w-0 max-w-full whitespace-normal break-words text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+        {domain}
+      </span>
+      <span className="mt-1.5 block min-w-0 max-w-full whitespace-normal break-words text-[11px] leading-relaxed text-muted-foreground line-clamp-3 [overflow-wrap:anywhere]">
+        {item.snippet || item.url}
+      </span>
+      <span className="mt-2 inline-flex max-w-full items-center gap-1 text-[11px] font-medium text-primary">
+        <LinkSimple size={10} className="flex-shrink-0" />
+        <span className="min-w-0 break-words [overflow-wrap:anywhere]">Open source</span>
+      </span>
+    </a>
+  )
+}
+
+function EvidenceList({
+  evidence,
+  initialCount = 3,
+}: {
+  evidence: ProcurementCompanyDetailsEvidence[]
+  initialCount?: number
+}) {
+  const visibleEvidence = evidence.slice(0, initialCount)
+  const hiddenEvidence = evidence.slice(initialCount)
+
+  return (
+    <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+      {visibleEvidence.map((item) => (
+        <EvidenceCard key={item.url} item={item} />
+      ))}
+      {hiddenEvidence.length > 0 && (
+        <details className="w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-dashed border-border bg-background/30 px-3 py-2">
+          <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground">
+            Show more evidence ({hiddenEvidence.length})
+          </summary>
+          <div className="mt-2 grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+            {hiddenEvidence.map((item) => (
+              <EvidenceCard key={item.url} item={item} />
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
 function EvidenceDisclosure({
   evidence,
 }: {
@@ -797,27 +855,12 @@ function EvidenceDisclosure({
   if (evidence.length === 0) return null
 
   return (
-    <details className="mt-3 rounded-xl border border-border bg-background/40 px-3 py-2">
-      <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground">
+    <details className="mt-3 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-background/40 px-3 py-2">
+      <summary className="cursor-pointer select-none break-words text-[11px] font-medium text-muted-foreground [overflow-wrap:anywhere]">
         Evidence ({evidence.length})
       </summary>
-      <div className="mt-2 grid gap-2">
-        {evidence.map((item) => (
-          <a
-            key={item.url}
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-primary/30"
-          >
-            <span className="block truncate text-xs font-medium text-foreground group-hover:text-primary">
-              {item.title}
-            </span>
-            <span className="mt-0.5 line-clamp-2 block text-[11px] leading-relaxed text-muted-foreground">
-              {item.snippet || item.url}
-            </span>
-          </a>
-        ))}
+      <div className="mt-2 w-full min-w-0 max-w-full overflow-hidden">
+        <EvidenceList evidence={evidence} />
       </div>
     </details>
   )
@@ -837,14 +880,16 @@ function DetailSection({
   status: string
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-4">
+    <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <p className="min-w-0 break-words text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground [overflow-wrap:anywhere]">
           {label}
         </p>
         <DetailStatusBadge status={status} />
       </div>
-      <div className="text-sm leading-relaxed text-foreground/85">{children}</div>
+      <div className="min-w-0 max-w-full break-words text-sm leading-relaxed text-foreground/85 [overflow-wrap:anywhere]">
+        {children}
+      </div>
       <p className="mt-2 text-[11px] text-muted-foreground">{percentLabel(confidence)}</p>
       <EvidenceDisclosure evidence={evidence} />
     </section>
@@ -871,13 +916,13 @@ function PriceRangeSummary({
       : null
 
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
       {unit || total ? (
-        <div className="flex flex-wrap gap-2">
-          {unit && <span className="rounded-full border border-border px-2.5 py-1 text-xs">{unit}</span>}
-          {total && <span className="rounded-full border border-border px-2.5 py-1 text-xs">{total}</span>}
+        <div className="flex min-w-0 max-w-full flex-wrap gap-2">
+          {unit && <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">{unit}</span>}
+          {total && <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">{total}</span>}
           {priceRange.quoteRequired && (
-            <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
+            <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground break-words [overflow-wrap:anywhere]">
               quote required
             </span>
           )}
@@ -894,14 +939,14 @@ function SpecificationSummary({
   details: ProcurementCompanyDetailsResponse["matchedSpecifications"]
 }) {
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
       <p>{details.summary}</p>
       {(details.matched.length > 0 || details.missing.length > 0) && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap gap-2">
           {details.matched.map((item) => (
             <span
               key={`matched-${item}`}
-              className="rounded-full border border-primary/25 bg-primary/5 px-2.5 py-1 text-xs text-primary"
+              className="min-w-0 max-w-full rounded-full border border-primary/25 bg-primary/5 px-2.5 py-1 text-xs text-primary break-words [overflow-wrap:anywhere]"
             >
               {item}
             </span>
@@ -909,7 +954,7 @@ function SpecificationSummary({
           {details.missing.map((item) => (
             <span
               key={`missing-${item}`}
-              className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+              className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground break-words [overflow-wrap:anywhere]"
             >
               Missing: {item}
             </span>
@@ -930,21 +975,23 @@ function BuyingLinkGroup({
   if (links.length === 0) return null
 
   return (
-    <div>
+    <div className="min-w-0 max-w-full overflow-hidden">
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex min-w-0 max-w-full flex-wrap gap-2">
         {links.map((link) => (
           <a
             key={link.url}
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+            className="inline-flex min-w-0 max-w-full items-start gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
           >
-            <LinkSimple size={10} />
-            {link.title}
+            <LinkSimple size={10} className="mt-0.5 flex-shrink-0" />
+            <span className="min-w-0 max-w-full whitespace-normal break-words [overflow-wrap:anywhere]">
+              {link.title}
+            </span>
           </a>
         ))}
       </div>
@@ -971,7 +1018,7 @@ function BuyingLinksSection({
     <DetailItem
       label="Buying/contact links"
       value={
-        <div className="grid gap-3">
+        <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden">
           <BuyingLinkGroup label="Products" links={links.productPages} />
           <BuyingLinkGroup label="Quotes" links={links.quotePages} />
           <BuyingLinkGroup label="Contact" links={links.contactPages} />
@@ -996,10 +1043,10 @@ function RisksSection({ risks }: { risks: ProcurementCompanyDetailsRisk[] }) {
     <DetailItem
       label="Possible risks"
       value={
-        <div className="grid gap-2">
+        <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
           {risks.map((risk, index) => (
-            <details key={`${risk.type}-${index}`} className="rounded-xl border border-border px-3 py-2">
-              <summary className="cursor-pointer select-none text-xs text-foreground">
+            <details key={`${risk.type}-${index}`} className="min-w-0 max-w-full overflow-hidden rounded-xl border border-border px-3 py-2">
+              <summary className="cursor-pointer select-none whitespace-normal break-words text-xs text-foreground [overflow-wrap:anywhere]">
                 <span className="mr-2 inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
                   {risk.severity}
                 </span>
@@ -1035,7 +1082,7 @@ function SupplierReviewCard({
 }) {
   return (
     <article
-      className="rounded-2xl overflow-hidden transition-all duration-200"
+      className="min-w-0 max-w-full overflow-hidden rounded-2xl transition-all duration-200"
       style={{
         border: `1px solid ${
           approved
@@ -1139,9 +1186,9 @@ function SupplierReviewCard({
 
       {/* Snippet row */}
       <div className="px-4 pb-3.5 -mt-1">
-        <div className="flex gap-3">
+        <div className="flex min-w-0 max-w-full gap-3 overflow-hidden">
           <div className="w-9 flex-shrink-0" />
-          <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--p-ink-2)" }}>
+          <p className="min-w-0 max-w-full break-words text-xs leading-relaxed line-clamp-2 [overflow-wrap:anywhere]" style={{ color: "var(--p-ink-2)" }}>
             {provider.snippet || provider.reasoning}
           </p>
         </div>
@@ -1149,14 +1196,14 @@ function SupplierReviewCard({
 
       {/* Expanded detail panel */}
       {expanded && (
-        <div style={{ borderTop: "1px solid var(--p-border)" }}>
+        <div className="min-w-0 max-w-full overflow-hidden" style={{ borderTop: "1px solid var(--p-border)" }}>
           {loading && (
             <div className="px-4 py-5">
               <div className="mb-4 flex items-center gap-2.5 text-muted-foreground">
                 <SpinnerGap size={16} weight="bold" className="animate-spin text-primary flex-shrink-0" />
                 <span className="text-sm">Fetching supplier evidence…</span>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[repeat(2,minmax(0,1fr))]">
                 {Array.from({ length: 4 }).map((_, index) => (
                   <div key={index} className="h-28 rounded-2xl border border-border bg-muted/30 animate-pulse" />
                 ))}
@@ -1165,15 +1212,15 @@ function SupplierReviewCard({
           )}
 
           {error && !loading && (
-            <div className="px-4 py-4 flex items-center gap-2 text-sm" style={{ color: "var(--p-rose)" }}>
+            <div className="flex min-w-0 max-w-full items-start gap-2 px-4 py-4 text-sm break-words [overflow-wrap:anywhere]" style={{ color: "var(--p-rose)" }}>
               <WarningCircle size={15} weight="duotone" className="flex-shrink-0" />
               {error}
             </div>
           )}
 
           {details && !loading && (
-            <div className="p-4 grid gap-3">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden p-4">
+              <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden lg:grid-cols-[repeat(2,minmax(0,1fr))]">
                 <DetailSection
                   confidence={details.availability.confidence}
                   evidence={details.availability.evidence}
@@ -1198,13 +1245,13 @@ function SupplierReviewCard({
                   label="Delivery fit"
                   status={details.deliveryFit.status}
                 >
-                  <div className="grid gap-2">
+                  <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
                     <p>{details.deliveryFit.summary}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full border border-border px-2.5 py-1 text-xs">
+                    <div className="flex min-w-0 max-w-full flex-wrap gap-2">
+                      <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">
                         Location {details.deliveryFit.locationFit ? "matched" : "uncertain"}
                       </span>
-                      <span className="rounded-full border border-border px-2.5 py-1 text-xs">
+                      <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">
                         Deadline {details.deliveryFit.deadlineFit}
                       </span>
                     </div>
@@ -1217,14 +1264,14 @@ function SupplierReviewCard({
                   label="Compliance"
                   status={details.compliance.status}
                 >
-                  <div className="grid gap-2">
+                  <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
                     <p>{details.compliance.summary}</p>
                     {details.compliance.certifications.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex min-w-0 max-w-full flex-wrap gap-2">
                         {details.compliance.certifications.map((certification) => (
                           <span
                             key={certification}
-                            className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+                            className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground break-words [overflow-wrap:anywhere]"
                           >
                             {certification}
                           </span>
@@ -1425,9 +1472,9 @@ function ReviewAndApproveStep({
         </p>
       </div>
 
-      <div className="flex gap-5 items-start">
+      <div className="flex min-w-0 max-w-full flex-col gap-5 xl:flex-row xl:items-start">
         {/* Supplier review cards */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3">
+        <div className="flex w-full min-w-0 max-w-full flex-1 flex-col gap-3 overflow-hidden">
           {selectedIndices.map((idx) => {
             const provider = hydratedProviders[idx]
             if (!provider) return null
@@ -1448,7 +1495,7 @@ function ReviewAndApproveStep({
         </div>
 
         {/* Sticky RFQ summary sidebar */}
-        <div className="w-44 flex-shrink-0 sticky top-24 self-start">
+        <div className="w-full flex-shrink-0 xl:sticky xl:top-24 xl:w-44 xl:self-start">
           <RFQSummaryPanel
             approvedIndices={approvedIndices}
             onContinue={onContinue}
