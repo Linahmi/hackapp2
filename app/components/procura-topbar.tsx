@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { UserButton } from "@/components/user-button"
 import { CommandPalette } from "./command-palette"
-import { ProcuraWordmark } from "./procura-logo"
+import { ProcoraLogo } from "./procura-logo"
 
 export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -29,7 +29,7 @@ export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string
       >
         {/* Brand */}
         <Link href="/" className="flex items-center flex-shrink-0 no-underline">
-          <ProcuraWordmark size={20} scheme="light" />
+          <ProcoraLogo size="sm" scheme="light" />
         </Link>
 
         {/* Breadcrumb */}

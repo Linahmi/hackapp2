@@ -4,7 +4,7 @@ import { motion } from "motion/react"
 import { AIPrompt } from "./components/prompt"
 import { UserButton } from "@/components/user-button"
 import { BorderGlow } from "./components/BorderGlow"
-import { ProcuraWordmark } from "./components/procura-logo"
+import { ProcoraLogo } from "./components/procura-logo"
 import { Particles } from "./components/Particles"
 
 const item = {
@@ -108,7 +108,7 @@ export default function Home() {
               animate={{ y: [0, -5, 0] }}
               transition={{ duration: 5, ease: "easeInOut", repeat: Infinity, repeatDelay: 1 }}
             >
-              <ProcuraWordmark size={46} showTagline />
+              <ProcoraLogo size="lg" showTagline priority />
             </motion.div>
           </motion.div>
 

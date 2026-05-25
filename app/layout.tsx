@@ -13,6 +13,11 @@ const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mon
 export const metadata: Metadata = {
   title: "Procora",
   description: "Procurement workflow — AI sourcing, RFQs, audit trail.",
+  icons: {
+    apple: "/procora-logo.png",
+    icon: "/procora-logo.png",
+    shortcut: "/procora-logo.png",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
