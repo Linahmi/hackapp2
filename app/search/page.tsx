@@ -60,7 +60,7 @@ export default async function SearchPage({ searchParams }: Props) {
         <WorkspaceHeader rfqId={rfqId} query={query} mode={searchMode} />
 
         {/* Results — wider for procurement (workflow + audit trail sidebar) */}
-        <div className={`mx-auto px-8 py-10 ${searchMode === "procurement" ? "max-w-5xl" : "max-w-4xl"}`}>
+        <div className={`mx-auto px-8 py-10 ${searchMode === "procurement" ? "max-w-[1500px]" : "max-w-4xl"}`}>
           <SearchResults
             chatId={id!}
             query={query}

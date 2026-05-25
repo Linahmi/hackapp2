@@ -35,6 +35,7 @@ import { ProviderListPanel, type RankedProvider } from "@/app/components/provide
 import { PhaseTimeline, type TimelinePhase } from "@/app/components/phase-timeline"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useProcurementStore } from "@/lib/stores/procurement-store"
+import { cn } from "@/lib/utils"
 import {
   type ProcurementCompanyDetailsEvidence,
   type ProcurementCompanyDetailsLink,
@@ -492,15 +493,9 @@ function ProcurementWorkflowChrome({
         </button>
       </div>
 
-      <motion.div
-        key={currentStep}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-        className="flex flex-col gap-8"
-      >
+      <div className="flex flex-col gap-8">
         {children}
-      </motion.div>
+      </div>
     </>
   )
 }
@@ -816,6 +811,27 @@ function EvidenceCard({ item }: { item: ProcurementCompanyDetailsEvidence }) {
   )
 }
 
+function normalizedEvidenceKey(item: ProcurementCompanyDetailsEvidence) {
+  try {
+    const url = new URL(item.url)
+    url.hash = ""
+    return url.toString().replace(/\/$/, "")
+  } catch {
+    return item.url.trim().replace(/\/$/, "")
+  }
+}
+
+function uniqueEvidenceItems(evidence: ProcurementCompanyDetailsEvidence[]) {
+  const seen = new Set<string>()
+
+  return evidence.filter((item) => {
+    const key = normalizedEvidenceKey(item)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function EvidenceList({
   evidence,
   initialCount = 3,
@@ -823,13 +839,14 @@ function EvidenceList({
   evidence: ProcurementCompanyDetailsEvidence[]
   initialCount?: number
 }) {
-  const visibleEvidence = evidence.slice(0, initialCount)
-  const hiddenEvidence = evidence.slice(initialCount)
+  const uniqueEvidence = uniqueEvidenceItems(evidence)
+  const visibleEvidence = uniqueEvidence.slice(0, initialCount)
+  const hiddenEvidence = uniqueEvidence.slice(initialCount)
 
   return (
     <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
-      {visibleEvidence.map((item) => (
-        <EvidenceCard key={item.url} item={item} />
+      {visibleEvidence.map((item, index) => (
+        <EvidenceCard key={`${normalizedEvidenceKey(item)}-${index}`} item={item} />
       ))}
       {hiddenEvidence.length > 0 && (
         <details className="w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-dashed border-border bg-background/30 px-3 py-2">
@@ -837,8 +854,8 @@ function EvidenceList({
             Show more evidence ({hiddenEvidence.length})
           </summary>
           <div className="mt-2 grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
-            {hiddenEvidence.map((item) => (
-              <EvidenceCard key={item.url} item={item} />
+            {hiddenEvidence.map((item, index) => (
+              <EvidenceCard key={`${normalizedEvidenceKey(item)}-${index + initialCount}`} item={item} />
             ))}
           </div>
         </details>
@@ -1335,7 +1352,7 @@ function RFQSummaryPanel({
 
   return (
     <div
-      className="flex flex-col gap-4 rounded-2xl p-4"
+      className="flex flex-col gap-3 rounded-2xl p-3"
       style={{
         border: "1px solid var(--p-border)",
         background: "var(--p-surface)",
@@ -1344,21 +1361,21 @@ function RFQSummaryPanel({
     >
       <div>
         <p
-          className="text-[10px] font-semibold uppercase tracking-[0.1em] mb-3"
+          className="text-[10px] font-semibold uppercase tracking-[0.1em] mb-2"
           style={{ color: "var(--p-muted)" }}
         >
           RFQ Campaign
         </p>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           <div className="flex flex-col items-start gap-0.5">
-            <span className="text-2xl font-bold" style={{ color: "var(--p-ink)" }}>
+            <span className="text-xl font-bold" style={{ color: "var(--p-ink)" }}>
               {approved.length}
             </span>
             <span className="text-[11px]" style={{ color: "var(--p-muted)" }}>Approved</span>
           </div>
           {excluded.length > 0 && (
             <div className="flex flex-col items-start gap-0.5">
-              <span className="text-2xl font-bold" style={{ color: "var(--p-faint)" }}>
+              <span className="text-xl font-bold" style={{ color: "var(--p-faint)" }}>
                 {excluded.length}
               </span>
               <span className="text-[11px]" style={{ color: "var(--p-muted)" }}>Excluded</span>
@@ -1413,7 +1430,7 @@ function RFQSummaryPanel({
         type="button"
         disabled={approved.length === 0}
         onClick={onContinue}
-        className="mt-1 inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+        className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
         style={{ background: "var(--p-accent)", color: "white" }}
       >
         Send RFQs
@@ -1425,6 +1442,7 @@ function RFQSummaryPanel({
 
 function ReviewAndApproveStep({
   approvedIndices,
+  auditTrail,
   companyDetailsErrorMap,
   companyDetailsLoadingSet,
   companyDetailsMap,
@@ -1436,6 +1454,7 @@ function ReviewAndApproveStep({
   selectedIndices,
 }: {
   approvedIndices: number[]
+  auditTrail: ReactNode
   companyDetailsErrorMap: Record<number, string>
   companyDetailsLoadingSet: number[]
   companyDetailsMap: Record<number, ProcurementCompanyDetailsResponse>
@@ -1472,9 +1491,9 @@ function ReviewAndApproveStep({
         </p>
       </div>
 
-      <div className="flex min-w-0 max-w-full flex-col gap-5 xl:flex-row xl:items-start">
+      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(680px,1fr)_180px_240px] xl:items-start 2xl:grid-cols-[minmax(780px,1fr)_200px_280px]">
         {/* Supplier review cards */}
-        <div className="flex w-full min-w-0 max-w-full flex-1 flex-col gap-3 overflow-hidden">
+        <div className="flex w-full min-w-0 max-w-none flex-col gap-3 overflow-hidden">
           {selectedIndices.map((idx) => {
             const provider = hydratedProviders[idx]
             if (!provider) return null
@@ -1495,13 +1514,17 @@ function ReviewAndApproveStep({
         </div>
 
         {/* Sticky RFQ summary sidebar */}
-        <div className="w-full flex-shrink-0 xl:sticky xl:top-24 xl:w-44 xl:self-start">
+        <div className="w-full min-w-0 flex-shrink-0 xl:sticky xl:top-24 xl:self-start">
           <RFQSummaryPanel
             approvedIndices={approvedIndices}
             onContinue={onContinue}
             providers={providers}
             selectedIndices={selectedIndices}
           />
+        </div>
+
+        <div className="w-full min-w-0 xl:sticky xl:top-24 xl:self-start">
+          {auditTrail}
         </div>
       </div>
     </section>
@@ -1778,10 +1801,21 @@ type AuditEvent = {
   detail?: string
 }
 
-function AuditTrail({ events }: { events: AuditEvent[] }) {
+function AuditTrail({
+  events,
+  reviewLayout = false,
+}: {
+  events: AuditEvent[]
+  reviewLayout?: boolean
+}) {
   return (
     <aside
-      className="w-52 flex-shrink-0 sticky top-24 self-start"
+      className={cn(
+        "min-w-0 flex-shrink-0 self-start",
+        reviewLayout
+          ? "w-full"
+          : "sticky top-24 w-52"
+      )}
       aria-label="Audit trail"
     >
       <p
@@ -2495,6 +2529,7 @@ export function SearchResults({
     selectedCompanyIndices.length > 0,
     approvedIndices.length > 0,
   ]
+  const isReviewStep = procurementStep === 2
 
   // ── Supplier actions ───────────────────────────────────────────────────────────
 
@@ -2524,9 +2559,16 @@ export function SearchResults({
 
   if (isProcurementMode) {
     return (
-      <>
+      <div className={cn("mx-auto w-full", isReviewStep ? "max-w-[1480px]" : "max-w-5xl")}>
         <PhaseTimeline phases={timelinePhases} />
-        <div className="flex gap-6 items-start">
+        <div
+          className={cn(
+            "min-w-0 max-w-full",
+            isReviewStep
+              ? "w-full"
+              : "flex w-full items-start gap-6"
+          )}
+        >
           <motion.div
             ref={contentRef}
             animate={{ x: panelOpen ? -SHIFT : 0 }}
@@ -2534,7 +2576,7 @@ export function SearchResults({
             onAnimationComplete={() => {
               if (panelOpen) setPanelVisible(true)
             }}
-            className="flex-1 min-w-0 flex flex-col gap-8"
+            className="flex min-w-0 max-w-full flex-1 flex-col gap-8"
           >
             <ProcurementWorkflowChrome
               currentStep={procurementStep}
@@ -2569,6 +2611,7 @@ export function SearchResults({
               {procurementStep === 2 && (
                 <ReviewAndApproveStep
                   approvedIndices={approvedIndices}
+                  auditTrail={<AuditTrail events={auditEvents} reviewLayout />}
                   companyDetailsErrorMap={companyDetailsErrorMap}
                   companyDetailsLoadingSet={companyDetailsLoadingSet}
                   companyDetailsMap={companyDetailsMap}
@@ -2593,7 +2636,7 @@ export function SearchResults({
             </ProcurementWorkflowChrome>
           </motion.div>
 
-          <AuditTrail events={auditEvents} />
+          {!isReviewStep && <AuditTrail events={auditEvents} />}
         </div>
 
         <SourcesPanel
@@ -2603,7 +2646,7 @@ export function SearchResults({
           onExitComplete={() => setPanelOpen(false)}
           position={panelPos}
         />
-      </>
+      </div>
     )
   }
 
