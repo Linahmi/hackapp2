@@ -112,30 +112,83 @@ export type ProcurementSearchResponse = {
   warnings: string[]
 }
 
+export type ProcurementCompanyDetailsEvidence = {
+  snippet: string
+  title: string
+  url: string
+}
+
+export type ProcurementCompanyDetailsLink = {
+  title: string
+  url: string
+}
+
+export type ProcurementCompanyDetailsRisk = {
+  evidence: ProcurementCompanyDetailsEvidence[]
+  message: string
+  severity: "low" | "medium" | "high"
+  type: "availability" | "budget" | "compliance" | "delivery" | "specification" | "supplier"
+}
+
 export type ProcurementCompanyDetailsResponse = {
-  budgetFit: string
+  availability: {
+    confidence: number
+    evidence: ProcurementCompanyDetailsEvidence[]
+    status: "available" | "likely_available" | "not_available" | "uncertain"
+    summary: string
+  }
+  buyingLinks: {
+    catalogPages: ProcurementCompanyDetailsLink[]
+    contactPages: ProcurementCompanyDetailsLink[]
+    productPages: ProcurementCompanyDetailsLink[]
+    quotePages: ProcurementCompanyDetailsLink[]
+  }
   company: {
     domain: string
     name: string
-    score: number
-    url: string
+    website: string
   }
-  complianceFit: string
-  deliveryFit: string
-  evidence: {
-    snippet: string
-    title: string
-    url: string
-  }[]
-  matchingSpecifications: string[]
-  priceRange: string
-  productAvailability: string
-  risks: string[]
-  usefulLinks: {
-    label: string
-    type: "source" | "product" | "quote" | "contact" | "sales"
-    url: string
-  }[]
+  compliance: {
+    certifications: string[]
+    confidence: number
+    evidence: ProcurementCompanyDetailsEvidence[]
+    status: "matched" | "partial" | "unknown"
+    summary: string
+  }
+  deliveryFit: {
+    confidence: number
+    deadlineFit: "likely" | "uncertain" | "unlikely"
+    evidence: ProcurementCompanyDetailsEvidence[]
+    locationFit: boolean
+    status: "bad" | "good" | "possible" | "uncertain"
+    summary: string
+  }
+  matchedSpecifications: {
+    confidence: number
+    evidence: ProcurementCompanyDetailsEvidence[]
+    matched: string[]
+    missing: string[]
+    status: "matched" | "not_matched" | "partial" | "uncertain"
+    summary: string
+  }
+  overallRecommendation: {
+    confidence: number
+    status: "bad_fit" | "possible_fit" | "strong_fit" | "weak_fit"
+    summary: string
+  }
+  priceRange: {
+    basis: string
+    confidence: number
+    currency: string
+    evidence: ProcurementCompanyDetailsEvidence[]
+    quoteRequired: boolean
+    status: "estimated" | "found" | "unknown"
+    totalMax: number | null
+    totalMin: number | null
+    unitMax: number | null
+    unitMin: number | null
+  }
+  risks: ProcurementCompanyDetailsRisk[]
 }
 
 export type ProcurementQuoteResponse = {

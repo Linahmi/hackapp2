@@ -1,5 +1,6 @@
 import {
   companyDetailsRequestSchema,
+  companyDetailsResponseSchema,
   getProcurementCompanyDetails,
 } from "@/lib/procurement-workflow"
 
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
 
   try {
     const details = await getProcurementCompanyDetails(parsed.data)
-    return Response.json(details)
+    return Response.json(companyDetailsResponseSchema.parse(details))
   } catch (error) {
     console.error("Procurement company details failed", error)
     return Response.json(

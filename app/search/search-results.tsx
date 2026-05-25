@@ -36,6 +36,9 @@ import { PhaseTimeline, type TimelinePhase } from "@/app/components/phase-timeli
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useProcurementStore } from "@/lib/stores/procurement-store"
 import {
+  type ProcurementCompanyDetailsEvidence,
+  type ProcurementCompanyDetailsLink,
+  type ProcurementCompanyDetailsRisk,
   type ProcurementCompanyDetailsResponse,
   type ProcurementQuoteResponse,
   procurementSearchStorageKey,
@@ -373,7 +376,6 @@ const procurementWorkflowSteps = [
 ] as const
 
 type ProcurementWorkflowStep = 0 | 1 | 2 | 3
-type ProcurementCompany = ProcurementSearchResponse["results"][number]
 
 // ── Shared small utils ─────────────────────────────────────────────────────────
 
@@ -751,6 +753,267 @@ function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
+function statusLabel(status: string) {
+  return status.replaceAll("_", " ")
+}
+
+function percentLabel(value: number) {
+  return `${Math.round(value * 100)}% confidence`
+}
+
+function DetailStatusBadge({ status }: { status: string }) {
+  const positive = new Set(["available", "found", "good", "matched", "strong_fit"])
+  const inferred = new Set(["likely_available", "estimated", "possible", "partial", "possible_fit"])
+  const isPositive = positive.has(status)
+  const isInferred = inferred.has(status)
+
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
+      style={{
+        background: isPositive || isInferred
+          ? "color-mix(in oklab, var(--p-accent), transparent 90%)"
+          : "var(--p-surface-alt)",
+        border: isPositive || isInferred
+          ? "1px solid color-mix(in oklab, var(--p-accent), transparent 72%)"
+          : "1px solid var(--p-border)",
+        color: isPositive
+          ? "color-mix(in oklab, var(--p-accent), var(--p-ink) 8%)"
+          : isInferred
+            ? "color-mix(in oklab, var(--p-accent), var(--p-muted) 28%)"
+            : "var(--p-muted)",
+      }}
+    >
+      {statusLabel(status)}
+    </span>
+  )
+}
+
+function EvidenceDisclosure({
+  evidence,
+}: {
+  evidence: ProcurementCompanyDetailsEvidence[]
+}) {
+  if (evidence.length === 0) return null
+
+  return (
+    <details className="mt-3 rounded-xl border border-border bg-background/40 px-3 py-2">
+      <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground">
+        Evidence ({evidence.length})
+      </summary>
+      <div className="mt-2 grid gap-2">
+        {evidence.map((item) => (
+          <a
+            key={item.url}
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-primary/30"
+          >
+            <span className="block truncate text-xs font-medium text-foreground group-hover:text-primary">
+              {item.title}
+            </span>
+            <span className="mt-0.5 line-clamp-2 block text-[11px] leading-relaxed text-muted-foreground">
+              {item.snippet || item.url}
+            </span>
+          </a>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function DetailSection({
+  children,
+  confidence,
+  evidence,
+  label,
+  status,
+}: {
+  children: ReactNode
+  confidence: number
+  evidence: ProcurementCompanyDetailsEvidence[]
+  label: string
+  status: string
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          {label}
+        </p>
+        <DetailStatusBadge status={status} />
+      </div>
+      <div className="text-sm leading-relaxed text-foreground/85">{children}</div>
+      <p className="mt-2 text-[11px] text-muted-foreground">{percentLabel(confidence)}</p>
+      <EvidenceDisclosure evidence={evidence} />
+    </section>
+  )
+}
+
+function formatMoney(value: number | null, currency: string) {
+  if (value === null) return null
+  return `${value.toLocaleString()} ${currency}`
+}
+
+function PriceRangeSummary({
+  priceRange,
+}: {
+  priceRange: ProcurementCompanyDetailsResponse["priceRange"]
+}) {
+  const unit =
+    priceRange.unitMin !== null && priceRange.unitMax !== null
+      ? `${formatMoney(priceRange.unitMin, priceRange.currency)}-${formatMoney(priceRange.unitMax, priceRange.currency)} per unit`
+      : null
+  const total =
+    priceRange.totalMin !== null && priceRange.totalMax !== null
+      ? `${formatMoney(priceRange.totalMin, priceRange.currency)}-${formatMoney(priceRange.totalMax, priceRange.currency)} total`
+      : null
+
+  return (
+    <div className="grid gap-2">
+      {unit || total ? (
+        <div className="flex flex-wrap gap-2">
+          {unit && <span className="rounded-full border border-border px-2.5 py-1 text-xs">{unit}</span>}
+          {total && <span className="rounded-full border border-border px-2.5 py-1 text-xs">{total}</span>}
+          {priceRange.quoteRequired && (
+            <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
+              quote required
+            </span>
+          )}
+        </div>
+      ) : null}
+      <p>{priceRange.basis}</p>
+    </div>
+  )
+}
+
+function SpecificationSummary({
+  details,
+}: {
+  details: ProcurementCompanyDetailsResponse["matchedSpecifications"]
+}) {
+  return (
+    <div className="grid gap-2">
+      <p>{details.summary}</p>
+      {(details.matched.length > 0 || details.missing.length > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {details.matched.map((item) => (
+            <span
+              key={`matched-${item}`}
+              className="rounded-full border border-primary/25 bg-primary/5 px-2.5 py-1 text-xs text-primary"
+            >
+              {item}
+            </span>
+          ))}
+          {details.missing.map((item) => (
+            <span
+              key={`missing-${item}`}
+              className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              Missing: {item}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BuyingLinkGroup({
+  label,
+  links,
+}: {
+  label: string
+  links: ProcurementCompanyDetailsLink[]
+}) {
+  if (links.length === 0) return null
+
+  return (
+    <div>
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {links.map((link) => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+          >
+            <LinkSimple size={10} />
+            {link.title}
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BuyingLinksSection({
+  links,
+}: {
+  links: ProcurementCompanyDetailsResponse["buyingLinks"]
+}) {
+  const hasLinks = Object.values(links).some((items) => items.length > 0)
+  if (!hasLinks) {
+    return (
+      <DetailItem
+        label="Buying/contact links"
+        value={<span className="text-muted-foreground">No useful supplier links were discovered.</span>}
+      />
+    )
+  }
+
+  return (
+    <DetailItem
+      label="Buying/contact links"
+      value={
+        <div className="grid gap-3">
+          <BuyingLinkGroup label="Products" links={links.productPages} />
+          <BuyingLinkGroup label="Quotes" links={links.quotePages} />
+          <BuyingLinkGroup label="Contact" links={links.contactPages} />
+          <BuyingLinkGroup label="Catalogs" links={links.catalogPages} />
+        </div>
+      }
+    />
+  )
+}
+
+function RisksSection({ risks }: { risks: ProcurementCompanyDetailsRisk[] }) {
+  if (risks.length === 0) {
+    return (
+      <DetailItem
+        label="Possible risks"
+        value={<span className="text-muted-foreground">No major risks were computed from the available evidence.</span>}
+      />
+    )
+  }
+
+  return (
+    <DetailItem
+      label="Possible risks"
+      value={
+        <div className="grid gap-2">
+          {risks.map((risk, index) => (
+            <details key={`${risk.type}-${index}`} className="rounded-xl border border-border px-3 py-2">
+              <summary className="cursor-pointer select-none text-xs text-foreground">
+                <span className="mr-2 inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                  {risk.severity}
+                </span>
+                {risk.message}
+              </summary>
+              <EvidenceDisclosure evidence={risk.evidence} />
+            </details>
+          ))}
+        </div>
+      }
+    />
+  )
+}
+
 function SupplierReviewCard({
   approved,
   details,
@@ -888,9 +1151,16 @@ function SupplierReviewCard({
       {expanded && (
         <div style={{ borderTop: "1px solid var(--p-border)" }}>
           {loading && (
-            <div className="px-4 py-5 flex items-center gap-2.5 text-muted-foreground">
-              <SpinnerGap size={16} weight="bold" className="animate-spin text-primary flex-shrink-0" />
-              <span className="text-sm">Loading supplier details…</span>
+            <div className="px-4 py-5">
+              <div className="mb-4 flex items-center gap-2.5 text-muted-foreground">
+                <SpinnerGap size={16} weight="bold" className="animate-spin text-primary flex-shrink-0" />
+                <span className="text-sm">Fetching supplier evidence…</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="h-28 rounded-2xl border border-border bg-muted/30 animate-pulse" />
+                ))}
+              </div>
             </div>
           )}
 
@@ -904,59 +1174,87 @@ function SupplierReviewCard({
           {details && !loading && (
             <div className="p-4 grid gap-3">
               <div className="grid grid-cols-2 gap-3">
-                <DetailItem label="Availability" value={details.productAvailability} />
-                <DetailItem label="Price range" value={details.priceRange} />
-                <DetailItem label="Delivery fit" value={details.deliveryFit} />
-                <DetailItem label="Compliance" value={details.complianceFit} />
-              </div>
+                <DetailSection
+                  confidence={details.availability.confidence}
+                  evidence={details.availability.evidence}
+                  label="Availability"
+                  status={details.availability.status}
+                >
+                  {details.availability.summary}
+                </DetailSection>
 
-              {details.matchingSpecifications.length > 0 && (
-                <DetailItem
-                  label="Matched specifications"
-                  value={details.matchingSpecifications.join(", ")}
-                />
-              )}
+                <DetailSection
+                  confidence={details.priceRange.confidence}
+                  evidence={details.priceRange.evidence}
+                  label="Price range"
+                  status={details.priceRange.status}
+                >
+                  <PriceRangeSummary priceRange={details.priceRange} />
+                </DetailSection>
 
-              {(details.risks.length > 0 || details.usefulLinks.length > 0) && (
-                <details className="rounded-xl border border-border bg-card p-3">
-                  <summary className="cursor-pointer text-xs font-semibold text-foreground select-none">
-                    Risks &amp; useful links
-                  </summary>
-                  <div className="mt-3 grid gap-3">
-                    {details.risks.length > 0 && (
-                      <div>
-                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                          Possible risks
-                        </p>
-                        <ul className="grid gap-0.5 pl-4 text-xs text-muted-foreground">
-                          {details.risks.map((r) => <li key={r}>{r}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                    {details.usefulLinks.length > 0 && (
-                      <div>
-                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                          Links
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {details.usefulLinks.map((link) => (
-                            <a
-                              key={link.url}
-                              href={link.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
-                            >
-                              <LinkSimple size={10} />
-                              {link.label}
-                            </a>
-                          ))}
-                        </div>
+                <DetailSection
+                  confidence={details.deliveryFit.confidence}
+                  evidence={details.deliveryFit.evidence}
+                  label="Delivery fit"
+                  status={details.deliveryFit.status}
+                >
+                  <div className="grid gap-2">
+                    <p>{details.deliveryFit.summary}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full border border-border px-2.5 py-1 text-xs">
+                        Location {details.deliveryFit.locationFit ? "matched" : "uncertain"}
+                      </span>
+                      <span className="rounded-full border border-border px-2.5 py-1 text-xs">
+                        Deadline {details.deliveryFit.deadlineFit}
+                      </span>
+                    </div>
+                  </div>
+                </DetailSection>
+
+                <DetailSection
+                  confidence={details.compliance.confidence}
+                  evidence={details.compliance.evidence}
+                  label="Compliance"
+                  status={details.compliance.status}
+                >
+                  <div className="grid gap-2">
+                    <p>{details.compliance.summary}</p>
+                    {details.compliance.certifications.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {details.compliance.certifications.map((certification) => (
+                          <span
+                            key={certification}
+                            className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+                          >
+                            {certification}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
-                </details>
-              )}
+                </DetailSection>
+              </div>
+
+              <DetailSection
+                confidence={details.matchedSpecifications.confidence}
+                evidence={details.matchedSpecifications.evidence}
+                label="Matched specifications"
+                status={details.matchedSpecifications.status}
+              >
+                <SpecificationSummary details={details.matchedSpecifications} />
+              </DetailSection>
+
+              <BuyingLinksSection links={details.buyingLinks} />
+              <RisksSection risks={details.risks} />
+
+              <DetailSection
+                confidence={details.overallRecommendation.confidence}
+                evidence={[]}
+                label="Overall recommendation"
+                status={details.overallRecommendation.status}
+              >
+                {details.overallRecommendation.summary}
+              </DetailSection>
             </div>
           )}
 
@@ -1337,16 +1635,13 @@ function MultiRFQStep({
   quotationsLoadingSet: number[]
   quotationsMap: Record<number, ProcurementQuoteResponse>
 }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(
+  const [activeIndexState, setActiveIndex] = useState<number | null>(
     approvedIndices[0] ?? null
   )
-
-  // Keep activeIndex valid when approvedIndices changes
-  useEffect(() => {
-    if (activeIndex === null && approvedIndices.length > 0) {
-      setActiveIndex(approvedIndices[0])
-    }
-  }, [activeIndex, approvedIndices])
+  const activeIndex =
+    activeIndexState !== null && approvedIndices.includes(activeIndexState)
+      ? activeIndexState
+      : approvedIndices[0] ?? null
 
   if (approvedIndices.length === 0) {
     return (
@@ -1581,6 +1876,7 @@ export function SearchResults({
   const setProcStatus = useProcurementStore((s) => s.setStatus)
   const setProcSuppliersFound = useProcurementStore((s) => s.setSuppliersFound)
   const resetProcStore = useProcurementStore((s) => s.reset)
+  const completedQuotationCount = Object.keys(quotationsMap).length
 
   useEffect(() => {
     if (isProcurementMode) return
@@ -1748,8 +2044,7 @@ export function SearchResults({
     if (procurementLoading) { setProcStatus("searching"); return }
     if (companyDetailsLoadingSet.length > 0) { setProcStatus("analyzing"); return }
     if (quotationsLoadingSet.length > 0) { setProcStatus("generating"); return }
-    const doneQuotes = Object.keys(quotationsMap).length
-    if (doneQuotes > 0 && doneQuotes === approvedIndices.length) { setProcStatus("complete"); return }
+    if (completedQuotationCount > 0 && completedQuotationCount === approvedIndices.length) { setProcStatus("complete"); return }
     if (procurementStep === 2 && approvedIndices.length > 0) { setProcStatus("analyzing"); return }
     if (selectedCompanyIndices.length === 0 && procurementResponse) { setProcStatus("awaiting-selection"); return }
     if (procurementResponse) { setProcStatus("idle"); return }
@@ -1759,8 +2054,7 @@ export function SearchResults({
     procurementLoading,
     companyDetailsLoadingSet.length,
     quotationsLoadingSet.length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    Object.keys(quotationsMap).length,
+    completedQuotationCount,
     approvedIndices.length,
     procurementStep,
     selectedCompanyIndices.length,
@@ -1777,7 +2071,7 @@ export function SearchResults({
     }
   }, [isProcurementMode, procurementResponse, setProcSuppliersFound])
 
-  // ── Company details: on-demand fetch (triggered by card expand) ───────────────
+  // ── Company details: fetched when suppliers enter review ──────────────────────
 
   const fetchCompanyDetails = useCallback(
     (index: number) => {
@@ -1794,7 +2088,7 @@ export function SearchResults({
 
       fetch("/api/procurement/company-details", {
         body: JSON.stringify({
-          company,
+          selectedCompany: company,
           normalizedRequest: procurementResponse.normalizedRequest,
           rawText: procurementPayload.rawText,
         }),
@@ -1820,7 +2114,6 @@ export function SearchResults({
           setCompanyDetailsLoadingSet((prev) => prev.filter((i) => i !== index))
         })
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [companyDetailsMap, companyDetailsLoadingSet, procurementPayload, procurementResponse, logAudit]
   )
 
@@ -1834,6 +2127,11 @@ export function SearchResults({
     },
     [fetchCompanyDetails]
   )
+
+  useEffect(() => {
+    if (!isProcurementMode || procurementStep !== 2) return
+    for (const index of selectedCompanyIndices) fetchCompanyDetails(index)
+  }, [fetchCompanyDetails, isProcurementMode, procurementStep, selectedCompanyIndices])
 
   // ── Quote generation: triggered when entering step 3 ─────────────────────────
 
@@ -2153,17 +2451,17 @@ export function SearchResults({
 
   // ── Supplier actions ───────────────────────────────────────────────────────────
 
-  const toggleSupplierSelection = useCallback((provider: Provider, index: number) => {
+  const toggleSupplierSelection = (_provider: Provider, index: number) => {
     setSelectedCompanyIndices((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
     )
-  }, [])
+  }
 
-  const toggleApproval = useCallback((index: number) => {
+  const toggleApproval = (index: number) => {
     setApprovedIndices((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
     )
-  }, [])
+  }
 
   // ── SSR guard ──────────────────────────────────────────────────────────────────
 
