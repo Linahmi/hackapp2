@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { UserButton } from "@/components/user-button"
 import { CommandPalette } from "./command-palette"
-import { ProcuraLogoMark } from "./procura-logo"
+import { ProcuraWordmark } from "./procura-logo"
 
 export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -28,14 +28,8 @@ export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string
         style={{ background: "var(--p-surface)", borderColor: "var(--p-border)" }}
       >
         {/* Brand */}
-        <Link href="/" className="flex items-center gap-2 flex-shrink-0 no-underline">
-          <ProcuraLogoMark size={22} />
-          <span
-            className="font-[family-name:var(--font-sans)] text-[15px] font-bold tracking-[-0.025em]"
-            style={{ color: "#052B45" }}
-          >
-            Procora
-          </span>
+        <Link href="/" className="flex items-center flex-shrink-0 no-underline">
+          <ProcuraWordmark size={20} scheme="light" />
         </Link>
 
         {/* Breadcrumb */}
@@ -59,7 +53,7 @@ export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string
         {/* Search — now a real button that opens the command palette */}
         <button
           onClick={() => setPaletteOpen(true)}
-          className="hidden md:flex items-center gap-2 px-3 h-[30px] rounded-[5px] flex-1 max-w-[360px] overflow-hidden transition-colors text-left cursor-pointer"
+          className="hidden md:flex items-center gap-2 px-3 h-[30px] rounded-xl flex-1 max-w-[360px] overflow-hidden transition-colors text-left cursor-pointer"
           style={{
             background: "var(--p-surface-alt)",
             border: "1px solid var(--p-border)",
@@ -80,7 +74,7 @@ export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string
         <nav className="flex items-center gap-1">
           <Link
             href="/"
-            className="px-3 py-[5px] text-[12px] font-medium rounded-[5px] no-underline"
+            className="px-3.5 py-[5px] text-[12px] font-medium rounded-lg no-underline transition-opacity hover:opacity-85"
             style={{ background: "var(--p-ink)", color: "white" }}
           >
             New request

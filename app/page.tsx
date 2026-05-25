@@ -4,7 +4,7 @@ import { motion } from "motion/react"
 import { AIPrompt } from "./components/prompt"
 import { UserButton } from "@/components/user-button"
 import { BorderGlow } from "./components/BorderGlow"
-import { ProcuraLogoMark } from "./components/procura-logo"
+import { ProcuraWordmark } from "./components/procura-logo"
 import { Particles } from "./components/Particles"
 
 const item = {
@@ -95,39 +95,27 @@ export default function Home() {
       </motion.div>
 
       {/* Center */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-14 gap-8 relative z-10">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-16 gap-8 relative z-10">
         <motion.div
-          className="flex flex-col items-center gap-8 w-full max-w-2xl"
+          className="flex flex-col items-center gap-10 w-full max-w-2xl"
           variants={container}
           initial="hidden"
           animate="visible"
         >
-          {/* Logo + wordmark */}
-          <motion.div variants={item} className="flex flex-col items-center gap-4">
+          {/* Integrated wordmark */}
+          <motion.div variants={item} className="flex flex-col items-center">
             <motion.div
-              animate={{ y: [0, -6, 0] }}
+              animate={{ y: [0, -5, 0] }}
               transition={{ duration: 5, ease: "easeInOut", repeat: Infinity, repeatDelay: 1 }}
             >
-              <ProcuraLogoMark size={54} />
+              <ProcuraWordmark size={46} showTagline />
             </motion.div>
-
-            <div className="flex flex-col items-center gap-1.5">
-              <h1
-                className="font-[family-name:var(--font-sans)] text-[40px] font-bold tracking-[-0.03em] leading-none"
-                style={{ color: "#052B45" }}
-              >
-                Procora
-              </h1>
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em]" style={{ color: "var(--p-muted)" }}>
-                Smart Procurement · Better Results
-              </p>
-            </div>
           </motion.div>
 
           {/* Tagline */}
           <motion.p
             variants={item}
-            className="text-[14px] text-center max-w-[380px] leading-relaxed -mt-2"
+            className="text-[14.5px] text-center max-w-[400px] leading-[1.65] -mt-3"
             style={{ color: "var(--p-ink-2)" }}
           >
             Describe your need — AI sources suppliers, sends RFQs, and ranks quotes automatically.
@@ -140,7 +128,7 @@ export default function Home() {
               backgroundColor="oklch(0.985 0.005 85)"
               glowColor="155 50 38"
               colors={["#2e8b65", "#6bbf97", "#b8892a"]}
-              borderRadius={7}
+              borderRadius={22}
               glowRadius={32}
               glowIntensity={1.0}
               coneSpread={28}
@@ -155,7 +143,7 @@ export default function Home() {
           {/* Keyboard hint */}
           <motion.p
             variants={item}
-            className="font-mono text-[10px] uppercase tracking-[0.1em] -mt-2"
+            className="font-mono text-[10px] uppercase tracking-[0.12em] -mt-4"
             style={{ color: "var(--p-faint)" }}
           >
             Enter to search · Shift+Enter for new line

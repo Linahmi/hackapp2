@@ -726,11 +726,11 @@ export function AIPrompt() {
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4">
       {/* Input box */}
       <div
-        className="rounded-[7px] border p-4"
+        className="rounded-2xl border p-5"
         style={{
-          background: "var(--p-surface)",
+          background: "linear-gradient(180deg, #ffffff 0%, oklch(0.992 0.002 85) 100%)",
           borderColor: "var(--p-border)",
-          boxShadow: "var(--p-shadow-1)",
+          boxShadow: "var(--p-shadow-card)",
         }}
       >
         {trimmedInput && (
@@ -743,12 +743,15 @@ export function AIPrompt() {
               <span className="font-mono">{completionLabel}</span>
             </div>
             <div
-              className="h-1 overflow-hidden rounded-full"
+              className="h-[3px] overflow-hidden rounded-full"
               style={{ background: "var(--p-surface-alt)" }}
             >
               <div
-                className="h-full rounded-full transition-[width] duration-300 ease-out"
-                style={{ width: `${progressWidth}%`, background: "var(--p-accent)" }}
+                className="h-full rounded-full transition-[width] duration-500 ease-out"
+                style={{
+                  width: `${progressWidth}%`,
+                  background: "linear-gradient(90deg, oklch(0.45 0.12 155) 0%, oklch(0.55 0.14 155) 100%)",
+                }}
               />
             </div>
           </div>
@@ -915,8 +918,8 @@ export function AIPrompt() {
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit}
-            className="flex h-9 w-9 items-center justify-center rounded-[5px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: "var(--p-accent)", color: "white" }}
+            className="flex h-9 w-9 items-center justify-center rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95"
+            style={{ background: "var(--p-accent)", color: "white", boxShadow: "0 2px 8px rgba(11,93,91,0.25)" }}
             aria-label="Submit"
           >
             <PaperPlaneTilt size={16} weight="fill" />

@@ -7,7 +7,7 @@
   --result-muted: color-mix(in oklab, var(--foreground), transparent 48%);
   --result-subtle: color-mix(in oklab, var(--foreground), transparent 66%);
   --result-chip: color-mix(in oklab, var(--muted), var(--card) 44%);
-  --result-shadow: 0 12px 32px -28px rgb(0 0 0 / 0.35);
+  --result-shadow: 0 2px 4px rgba(20,20,30,0.04), 0 8px 24px -8px rgba(20,20,30,0.10), 0 0 0 1px rgba(20,20,30,0.02);
 
   width: 100%;
   color: var(--foreground);
@@ -21,12 +21,12 @@
   --result-muted: color-mix(in oklab, var(--foreground), transparent 42%);
   --result-subtle: color-mix(in oklab, var(--foreground), transparent 62%);
   --result-chip: color-mix(in oklab, var(--muted), black 7%);
-  --result-shadow: 0 14px 34px -30px rgb(0 0 0 / 0.72);
+  --result-shadow: 0 2px 4px rgba(0,0,0,0.12), 0 10px 28px -8px rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.05);
 }
 
 .listWrap {
   display: grid;
-  gap: 0.9rem;
+  gap: 1.1rem;
   width: 100%;
 }
 
@@ -44,10 +44,10 @@
 }
 
 .card:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: var(--result-border-strong);
   background: var(--result-surface-hover);
-  box-shadow: 0 16px 38px -30px rgb(0 0 0 / 0.45);
+  box-shadow: 0 2px 6px rgba(20,20,30,0.05), 0 12px 32px -8px rgba(20,20,30,0.13), 0 0 0 1px rgba(20,20,30,0.03);
 }
 
 .card[data-selected="true"] {
@@ -63,7 +63,7 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 1.05rem 1.15rem;
+  padding: 1.2rem 1.3rem;
   text-align: left;
 }
 
