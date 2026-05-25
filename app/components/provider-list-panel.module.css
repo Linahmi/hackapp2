@@ -55,6 +55,11 @@
   background: color-mix(in oklab, var(--result-surface-hover), var(--result-accent) 4%);
 }
 
+.card[data-multi-selected="true"] {
+  border-color: color-mix(in oklab, var(--result-accent), transparent 50%);
+  background: color-mix(in oklab, var(--result-surface-hover), var(--result-accent) 5%);
+}
+
 .cardButton {
   display: grid;
   width: 100%;
@@ -172,6 +177,38 @@
   border-color: color-mix(in oklab, var(--result-accent), transparent 58%);
   background: color-mix(in oklab, var(--result-accent), transparent 90%);
   color: color-mix(in oklab, var(--result-accent), var(--foreground) 10%);
+}
+
+/* Multi-select checkbox circle */
+.multiCheck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--result-border);
+  background: transparent;
+  color: transparent;
+  transition: border-color 160ms ease, background 160ms ease;
+  flex-shrink: 0;
+}
+
+.card:hover .multiCheck {
+  border-color: color-mix(in oklab, var(--result-accent), transparent 55%);
+}
+
+.multiCheckSelected {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--result-accent);
+  background: var(--result-accent);
+  color: white;
+  flex-shrink: 0;
 }
 
 .scoreValue {

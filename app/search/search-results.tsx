@@ -1,6 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react"
 import { motion, AnimatePresence } from "motion/react"
 import {
   ArrowLeft,
@@ -10,6 +18,7 @@ import {
   WarningCircle,
   Brain,
   BookOpen,
+  CaretDown,
   CheckCircle,
   Copy,
   DownloadSimple,
@@ -55,69 +64,69 @@ function SourcesPanel({
   return (
     <AnimatePresence onExitComplete={onExitComplete}>
       {visible && position && (
-    <motion.aside
-      key="sources-panel"
-      initial={{ opacity: 0, x: -16, scale: 0.98 }}
-      animate={{
-        opacity: 1,
-        x: 0,
-        scale: 1,
-        transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
-      }}
-      exit={{
-        opacity: 0,
-        x: -16,
-        scale: 0.98,
-        transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
-      }}
-      style={{ position: "fixed", top: position.top, left: position.left }}
-      className="w-72 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-2xl border border-border bg-card shadow-lg z-50"
-    >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          <Buildings size={14} weight="duotone" className="text-primary" />
-          <span className="text-sm font-semibold text-foreground">
-            {providers.length} providers
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          aria-label="Close"
+        <motion.aside
+          key="sources-panel"
+          initial={{ opacity: 0, x: -16, scale: 0.98 }}
+          animate={{
+            opacity: 1,
+            x: 0,
+            scale: 1,
+            transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
+          }}
+          exit={{
+            opacity: 0,
+            x: -16,
+            scale: 0.98,
+            transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
+          }}
+          style={{ position: "fixed", top: position.top, left: position.left }}
+          className="w-72 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-2xl border border-border bg-card shadow-lg z-50"
         >
-          <X size={12} weight="bold" />
-        </button>
-      </div>
-
-      <div className="divide-y divide-border">
-        {providers.map((p, i) => {
-          const hostname = (() => {
-            try { return new URL(p.url).hostname.replace(/^www\./, "") }
-            catch { return p.url }
-          })()
-          return (
-            <div key={i} className="px-4 py-3">
-              <p className="text-sm font-medium text-foreground mb-0.5">
-                {i + 1}. {p.name}
-              </p>
-              <a
-                href={p.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1.5"
-              >
-                <Globe size={10} />
-                {hostname} · {i + 1}
-              </a>
-              <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-                {p.reasoning}
-              </p>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Buildings size={14} weight="duotone" className="text-primary" />
+              <span className="text-sm font-semibold text-foreground">
+                {providers.length} providers
+              </span>
             </div>
-          )
-        })}
-      </div>
-    </motion.aside>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              aria-label="Close"
+            >
+              <X size={12} weight="bold" />
+            </button>
+          </div>
+
+          <div className="divide-y divide-border">
+            {providers.map((p, i) => {
+              const hostname = (() => {
+                try { return new URL(p.url).hostname.replace(/^www\./, "") }
+                catch { return p.url }
+              })()
+              return (
+                <div key={i} className="px-4 py-3">
+                  <p className="text-sm font-medium text-foreground mb-0.5">
+                    {i + 1}. {p.name}
+                  </p>
+                  <a
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1.5"
+                  >
+                    <Globe size={10} />
+                    {hostname} · {i + 1}
+                  </a>
+                  <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                    {p.reasoning}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </motion.aside>
       )}
     </AnimatePresence>
   )
@@ -293,12 +302,7 @@ function fieldLabel(field: string) {
     resourceType: "Resource",
     specifications: "Specs",
   }
-
   return labels[field] ?? field
-}
-
-function procurementResultName(result: ProcurementSearchResponse["results"][number] | null | undefined) {
-  return result?.supplierName || result?.title || ""
 }
 
 function procurementProviders(response: ProcurementSearchResponse): Provider[] {
@@ -324,9 +328,7 @@ function procurementProviders(response: ProcurementSearchResponse): Provider[] {
       matchedFields: result.matchedFields.map(fieldLabel),
       metrics,
       name: result.companyName || result.supplierName || result.title,
-      reasoning: `${result.snippet || result.title}${
-        matched ? ` Matched: ${matched}.` : ""
-      }${warnings}`,
+      reasoning: `${result.snippet || result.title}${matched ? ` Matched: ${matched}.` : ""}${warnings}`,
       score: result.score ?? Math.round(result.estimatedFit * 100),
       snippet: result.snippet || result.title,
       url: result.url,
@@ -340,9 +342,7 @@ function procurementReasoning(response: ProcurementSearchResponse) {
   const normalizedFields = [
     request.quantity ? `${request.quantity.toLocaleString()} units` : null,
     request.resourceType,
-    request.specifications.length > 0
-      ? `specs: ${request.specifications.join(", ")}`
-      : null,
+    request.specifications.length > 0 ? `specs: ${request.specifications.join(", ")}` : null,
     request.location ? `delivery location: ${request.location}` : null,
     request.deliveryDate ? `delivery by ${request.deliveryDate}` : null,
     request.budget
@@ -363,15 +363,35 @@ function procurementReasoning(response: ProcurementSearchResponse) {
   ].join("\n\n")
 }
 
+// ── Workflow step config ───────────────────────────────────────────────────────
+
 const procurementWorkflowSteps = [
   "Analysis",
-  "Companies",
-  "Company details",
-  "Quotation",
+  "Suppliers",
+  "Review & Approve",
+  "Send RFQs",
 ] as const
 
 type ProcurementWorkflowStep = 0 | 1 | 2 | 3
 type ProcurementCompany = ProcurementSearchResponse["results"][number]
+
+// ── Shared small utils ─────────────────────────────────────────────────────────
+
+function getInitialsLocal(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+}
+
+function getDomainLocal(url: string) {
+  try { return new URL(url).hostname.replace(/^www\./, "") }
+  catch { return url }
+}
+
+// ── Structural components ──────────────────────────────────────────────────────
 
 function LoadingBlock({ label }: { label: string }) {
   return (
@@ -483,25 +503,20 @@ function ProcurementWorkflowChrome({
   )
 }
 
-function NormalizedRequestCard({
-  response,
-}: {
-  response: ProcurementSearchResponse
-}) {
+// ── Step 0: Analysis ───────────────────────────────────────────────────────────
+
+function NormalizedRequestCard({ response }: { response: ProcurementSearchResponse }) {
   return (
     <section className="rounded-2xl border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Buildings size={15} weight="duotone" className="text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">
-            Normalized procurement request
-          </h2>
+          <h2 className="text-sm font-semibold text-foreground">Normalized procurement request</h2>
         </div>
         <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
           Exa query from fields
         </span>
       </div>
-
       <div className="flex flex-wrap gap-2">
         {[
           ["Resource", response.normalizedRequest.resourceType],
@@ -522,17 +537,13 @@ function NormalizedRequestCard({
             </span>
           ))}
       </div>
-
-      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-        {response.queryUsed}
-      </p>
+      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{response.queryUsed}</p>
     </section>
   )
 }
 
 function WarningsList({ warnings }: { warnings: string[] }) {
   if (warnings.length === 0) return null
-
   return (
     <section className="flex flex-col gap-1 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
       {warnings.map((warning) => (
@@ -667,14 +678,16 @@ function AnalysisStep({
   )
 }
 
+// ── Step 1: Suppliers (multi-select) ──────────────────────────────────────────
+
 function CompaniesStep({
-  onSelectCompany,
+  onToggleCompany,
   providers,
-  selectedIndex,
+  selectedIndices,
 }: {
-  onSelectCompany: (provider: Provider, index: number) => void
+  onToggleCompany: (provider: Provider, index: number) => void
   providers: Provider[]
-  selectedIndex: number | null
+  selectedIndices: number[]
 }) {
   if (providers.length === 0) {
     return (
@@ -688,36 +701,46 @@ function CompaniesStep({
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Matching companies</h2>
+          <h2 className="text-sm font-semibold text-foreground">Matching suppliers</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Select one company to continue to detailed buying information.
+            Select one or more suppliers to include in your RFQ campaign.
           </p>
         </div>
-        {selectedIndex !== null && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
+        {selectedIndices.length > 0 && (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium"
+            style={{
+              background: "color-mix(in oklab, var(--p-accent), transparent 90%)",
+              color: "color-mix(in oklab, var(--p-accent), var(--p-ink) 12%)",
+              border: "1px solid color-mix(in oklab, var(--p-accent), transparent 68%)",
+            }}
+          >
             <CheckCircle size={13} weight="fill" />
-            Selected
+            {selectedIndices.length} selected
           </span>
         )}
       </div>
 
       <ProviderListPanel
         defaultExpandedFirst={false}
-        onSelect={onSelectCompany}
+        multiSelect
+        onSelect={onToggleCompany}
         providers={providers}
-        selectedIndex={selectedIndex}
+        selectedIndices={selectedIndices}
       />
+
+      {selectedIndices.length === 0 && providers.length > 0 && (
+        <p className="text-center text-xs py-1" style={{ color: "var(--p-muted)" }}>
+          Select at least one supplier to continue
+        </p>
+      )}
     </section>
   )
 }
 
-function DetailItem({
-  label,
-  value,
-}: {
-  label: string
-  value: ReactNode
-}) {
+// ── Step 2: Review & Approve ───────────────────────────────────────────────────
+
+function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -728,106 +751,419 @@ function DetailItem({
   )
 }
 
-function CompanyDetailsStep({
+function SupplierReviewCard({
+  approved,
   details,
   error,
+  expanded,
   loading,
-  selectedCompany,
+  onExpand,
+  onToggleApproval,
+  provider,
 }: {
+  approved: boolean
   details: ProcurementCompanyDetailsResponse | null
   error: string | null
+  expanded: boolean
   loading: boolean
-  selectedCompany: ProcurementCompany | null
+  onExpand: () => void
+  onToggleApproval: () => void
+  provider: Provider & { domain: string }
 }) {
-  if (!selectedCompany) {
+  return (
+    <article
+      className="rounded-2xl overflow-hidden transition-all duration-200"
+      style={{
+        border: `1px solid ${
+          approved
+            ? "color-mix(in oklab, var(--p-accent), transparent 55%)"
+            : "var(--p-border)"
+        }`,
+        background: approved
+          ? "color-mix(in oklab, white, var(--p-accent) 2.5%)"
+          : "var(--p-surface)",
+        boxShadow: "var(--p-shadow-card)",
+      }}
+    >
+      {/* Compact header */}
+      <div className="px-4 py-3.5 flex items-center gap-3">
+        {/* Logo initials */}
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+          style={{
+            background: "color-mix(in oklab, var(--p-accent), var(--p-surface) 88%)",
+            color: "color-mix(in oklab, var(--p-accent), var(--p-ink) 20%)",
+            border: "1px solid color-mix(in oklab, var(--p-accent), transparent 76%)",
+          }}
+        >
+          {getInitialsLocal(provider.name)}
+        </div>
+
+        {/* Name + domain */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold leading-snug truncate" style={{ color: "var(--p-ink)" }}>
+            {provider.name}
+          </p>
+          <p className="text-xs leading-snug truncate" style={{ color: "var(--p-muted)" }}>
+            {provider.domain}
+          </p>
+        </div>
+
+        {/* Score pill */}
+        <span
+          className="flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold"
+          style={{
+            background: "color-mix(in oklab, var(--p-accent), var(--p-surface) 90%)",
+            color: "color-mix(in oklab, var(--p-accent), var(--p-ink) 10%)",
+            border: "1px solid color-mix(in oklab, var(--p-accent), transparent 72%)",
+          }}
+        >
+          {provider.score} match
+        </span>
+
+        {/* RFQ approval toggle */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleApproval() }}
+          className="flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
+          style={
+            approved
+              ? {
+                  background: "color-mix(in oklab, var(--p-accent), transparent 88%)",
+                  color: "color-mix(in oklab, var(--p-accent), var(--p-ink) 8%)",
+                  border: "1px solid color-mix(in oklab, var(--p-accent), transparent 58%)",
+                }
+              : {
+                  background: "transparent",
+                  color: "var(--p-muted)",
+                  border: "1px solid var(--p-border)",
+                }
+          }
+        >
+          {approved ? (
+            <>
+              <CheckCircle size={13} weight="fill" />
+              Include in RFQ
+            </>
+          ) : (
+            <>
+              <span
+                className="w-[13px] h-[13px] rounded-full border-2 flex-shrink-0"
+                style={{ borderColor: "var(--p-faint)" }}
+              />
+              Excluded
+            </>
+          )}
+        </button>
+
+        {/* Expand chevron */}
+        <button
+          type="button"
+          onClick={onExpand}
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full border border-border text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors"
+          aria-label={expanded ? "Collapse details" : "Expand details"}
+        >
+          <CaretDown
+            size={12}
+            weight="bold"
+            style={{
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 180ms ease",
+            }}
+          />
+        </button>
+      </div>
+
+      {/* Snippet row */}
+      <div className="px-4 pb-3.5 -mt-1">
+        <div className="flex gap-3">
+          <div className="w-9 flex-shrink-0" />
+          <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--p-ink-2)" }}>
+            {provider.snippet || provider.reasoning}
+          </p>
+        </div>
+      </div>
+
+      {/* Expanded detail panel */}
+      {expanded && (
+        <div style={{ borderTop: "1px solid var(--p-border)" }}>
+          {loading && (
+            <div className="px-4 py-5 flex items-center gap-2.5 text-muted-foreground">
+              <SpinnerGap size={16} weight="bold" className="animate-spin text-primary flex-shrink-0" />
+              <span className="text-sm">Loading supplier details…</span>
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="px-4 py-4 flex items-center gap-2 text-sm" style={{ color: "var(--p-rose)" }}>
+              <WarningCircle size={15} weight="duotone" className="flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {details && !loading && (
+            <div className="p-4 grid gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <DetailItem label="Availability" value={details.productAvailability} />
+                <DetailItem label="Price range" value={details.priceRange} />
+                <DetailItem label="Delivery fit" value={details.deliveryFit} />
+                <DetailItem label="Compliance" value={details.complianceFit} />
+              </div>
+
+              {details.matchingSpecifications.length > 0 && (
+                <DetailItem
+                  label="Matched specifications"
+                  value={details.matchingSpecifications.join(", ")}
+                />
+              )}
+
+              {(details.risks.length > 0 || details.usefulLinks.length > 0) && (
+                <details className="rounded-xl border border-border bg-card p-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-foreground select-none">
+                    Risks &amp; useful links
+                  </summary>
+                  <div className="mt-3 grid gap-3">
+                    {details.risks.length > 0 && (
+                      <div>
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Possible risks
+                        </p>
+                        <ul className="grid gap-0.5 pl-4 text-xs text-muted-foreground">
+                          {details.risks.map((r) => <li key={r}>{r}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {details.usefulLinks.length > 0 && (
+                      <div>
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Links
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {details.usefulLinks.map((link) => (
+                            <a
+                              key={link.url}
+                              href={link.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+                            >
+                              <LinkSimple size={10} />
+                              {link.label}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+
+          {!details && !loading && !error && (
+            <div className="px-4 py-4 text-sm text-muted-foreground">
+              No details available yet.
+            </div>
+          )}
+        </div>
+      )}
+    </article>
+  )
+}
+
+function RFQSummaryPanel({
+  approvedIndices,
+  onContinue,
+  providers,
+  selectedIndices,
+}: {
+  approvedIndices: number[]
+  onContinue: () => void
+  providers: Provider[]
+  selectedIndices: number[]
+}) {
+  const approved = approvedIndices.map((i) => providers[i]).filter(Boolean)
+  const excluded = selectedIndices
+    .filter((i) => !approvedIndices.includes(i))
+    .map((i) => providers[i])
+    .filter(Boolean)
+
+  return (
+    <div
+      className="flex flex-col gap-4 rounded-2xl p-4"
+      style={{
+        border: "1px solid var(--p-border)",
+        background: "var(--p-surface)",
+        boxShadow: "var(--p-shadow-card)",
+      }}
+    >
+      <div>
+        <p
+          className="text-[10px] font-semibold uppercase tracking-[0.1em] mb-3"
+          style={{ color: "var(--p-muted)" }}
+        >
+          RFQ Campaign
+        </p>
+        <div className="flex gap-4">
+          <div className="flex flex-col items-start gap-0.5">
+            <span className="text-2xl font-bold" style={{ color: "var(--p-ink)" }}>
+              {approved.length}
+            </span>
+            <span className="text-[11px]" style={{ color: "var(--p-muted)" }}>Approved</span>
+          </div>
+          {excluded.length > 0 && (
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="text-2xl font-bold" style={{ color: "var(--p-faint)" }}>
+                {excluded.length}
+              </span>
+              <span className="text-[11px]" style={{ color: "var(--p-muted)" }}>Excluded</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {approved.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+            style={{ color: "var(--p-muted)" }}
+          >
+            Included
+          </p>
+          {approved.map((p, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <CheckCircle
+                size={12}
+                weight="fill"
+                style={{ color: "var(--p-accent)", flexShrink: 0 }}
+              />
+              <span className="text-xs truncate" style={{ color: "var(--p-ink)" }}>
+                {p?.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {excluded.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+            style={{ color: "var(--p-muted)" }}
+          >
+            Excluded
+          </p>
+          {excluded.map((p, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <X size={11} weight="bold" style={{ color: "var(--p-faint)", flexShrink: 0 }} />
+              <span className="text-xs truncate" style={{ color: "var(--p-muted)" }}>
+                {p?.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        disabled={approved.length === 0}
+        onClick={onContinue}
+        className="mt-1 inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+        style={{ background: "var(--p-accent)", color: "white" }}
+      >
+        Send RFQs
+        <ArrowRight size={14} weight="bold" />
+      </button>
+    </div>
+  )
+}
+
+function ReviewAndApproveStep({
+  approvedIndices,
+  companyDetailsErrorMap,
+  companyDetailsLoadingSet,
+  companyDetailsMap,
+  expandedIndex,
+  onContinue,
+  onExpandCard,
+  onToggleApproval,
+  providers,
+  selectedIndices,
+}: {
+  approvedIndices: number[]
+  companyDetailsErrorMap: Record<number, string>
+  companyDetailsLoadingSet: number[]
+  companyDetailsMap: Record<number, ProcurementCompanyDetailsResponse>
+  expandedIndex: number | null
+  onContinue: () => void
+  onExpandCard: (index: number) => void
+  onToggleApproval: (index: number) => void
+  providers: Provider[]
+  selectedIndices: number[]
+}) {
+  const hydratedProviders = useMemo(
+    () =>
+      providers.map((p) => ({
+        ...p,
+        domain: getDomainLocal(p.url),
+      })),
+    [providers]
+  )
+
+  if (selectedIndices.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
-        Select a company before opening company details.
+        No suppliers were selected. Go back and select at least one supplier.
       </div>
     )
   }
 
-  if (loading) return <LoadingBlock label="Checking selected company details…" />
-  if (error) return <ErrorBlock message={error} />
-  if (!details) return null
-
   return (
-    <section className="flex flex-col gap-5">
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          Selected company
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Review &amp; Approve Suppliers</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Validate each supplier before sending RFQs. Expand a card to see detailed information.
         </p>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">{details.company.name}</h2>
-            <a
-              href={details.company.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Globe size={13} />
-              {details.company.domain}
-            </a>
-          </div>
-          <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-sm font-medium text-primary">
-            {details.company.score} match
-          </span>
-        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DetailItem label="Product/resource availability" value={details.productAvailability} />
-        <DetailItem label="Estimated price range" value={details.priceRange} />
-        <DetailItem
-          label="Matching specifications"
-          value={details.matchingSpecifications.join(", ")}
-        />
-        <DetailItem label="Delivery/location fit" value={details.deliveryFit} />
-        <DetailItem label="Budget fit" value={details.budgetFit} />
-        <DetailItem label="Compliance fit" value={details.complianceFit} />
-      </div>
-
-      <details className="rounded-2xl border border-border bg-card p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-foreground">
-          Risks and useful links
-        </summary>
-        <div className="mt-4 grid gap-4">
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Possible problems or risks
-            </p>
-            <ul className="grid gap-1 pl-4 text-sm text-muted-foreground">
-              {details.risks.map((risk) => (
-                <li key={risk}>{risk}</li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Useful links
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {details.usefulLinks.map((link) => (
-                <a
-                  key={`${link.type}-${link.url}`}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-                >
-                  <LinkSimple size={12} />
-                  {link.label}
-                </a>
-              ))}
-            </div>
-          </div>
+      <div className="flex gap-5 items-start">
+        {/* Supplier review cards */}
+        <div className="flex-1 min-w-0 flex flex-col gap-3">
+          {selectedIndices.map((idx) => {
+            const provider = hydratedProviders[idx]
+            if (!provider) return null
+            return (
+              <SupplierReviewCard
+                key={idx}
+                approved={approvedIndices.includes(idx)}
+                details={companyDetailsMap[idx] ?? null}
+                error={companyDetailsErrorMap[idx] ?? null}
+                expanded={expandedIndex === idx}
+                loading={companyDetailsLoadingSet.includes(idx)}
+                onExpand={() => onExpandCard(idx)}
+                onToggleApproval={() => onToggleApproval(idx)}
+                provider={provider}
+              />
+            )
+          })}
         </div>
-      </details>
+
+        {/* Sticky RFQ summary sidebar */}
+        <div className="w-44 flex-shrink-0 sticky top-24 self-start">
+          <RFQSummaryPanel
+            approvedIndices={approvedIndices}
+            onContinue={onContinue}
+            providers={providers}
+            selectedIndices={selectedIndices}
+          />
+        </div>
+      </div>
     </section>
   )
 }
+
+// ── Step 3: Send RFQs ──────────────────────────────────────────────────────────
 
 function downloadDocument(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
@@ -839,18 +1175,48 @@ function downloadDocument(filename: string, content: string) {
   URL.revokeObjectURL(url)
 }
 
-function QuoteStep({
+function SupplierQuoteCard({
   error,
   loading,
+  provider,
   quote,
 }: {
   error: string | null
   loading: boolean
+  provider: Provider
   quote: ProcurementQuoteResponse | null
 }) {
-  if (loading) return <LoadingBlock label="Generating quotation and provider email…" />
-  if (error) return <ErrorBlock message={error} />
-  if (!quote) return null
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-5 flex items-center gap-3 text-muted-foreground">
+        <SpinnerGap size={20} weight="bold" className="animate-spin text-primary flex-shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-foreground">Generating RFQ…</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{provider?.name}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-5 flex items-center gap-3">
+        <WarningCircle size={20} weight="duotone" className="text-destructive flex-shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-foreground">{provider?.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!quote) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+        RFQ not yet generated.
+      </div>
+    )
+  }
 
   const mailtoUrl = quote.email.recipient
     ? `mailto:${quote.email.recipient}?subject=${encodeURIComponent(
@@ -859,16 +1225,15 @@ function QuoteStep({
     : null
 
   return (
-    <section className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5">
+      {/* Quotation document */}
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               {quote.quotation.appName}
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">
-              {quote.quotation.title}
-            </h2>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">{quote.quotation.title}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Generated {quote.quotation.generatedDate}
             </p>
@@ -877,16 +1242,14 @@ function QuoteStep({
             type="button"
             onClick={() =>
               downloadDocument(
-                `quotation-${quote.quotation.providerCompany
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, "-")}.txt`,
+                `rfq-${quote.quotation.providerCompany.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.txt`,
                 quote.documentText
               )
             }
             className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
           >
             <DownloadSimple size={15} />
-            Download document
+            Download
           </button>
         </div>
 
@@ -910,6 +1273,7 @@ function QuoteStep({
         </div>
       </div>
 
+      {/* Provider email */}
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -939,9 +1303,7 @@ function QuoteStep({
         <div className="grid gap-3 text-sm">
           <div>
             <span className="text-muted-foreground">Recipient: </span>
-            <span className="text-foreground">
-              {quote.email.recipient ?? "Not found"}
-            </span>
+            <span className="text-foreground">{quote.email.recipient ?? "Not found"}</span>
           </div>
           <div>
             <span className="text-muted-foreground">Subject: </span>
@@ -952,12 +1314,115 @@ function QuoteStep({
           </pre>
           {!quote.email.canSend && (
             <p className="text-xs text-muted-foreground">
-              No provider email address was found. Use the generated email with the
-              provider contact form or copy it into your mail client.
+              No provider email address was found. Use the generated email with the provider contact
+              form or copy it into your mail client.
             </p>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function MultiRFQStep({
+  approvedIndices,
+  providers,
+  quotationsErrorMap,
+  quotationsLoadingSet,
+  quotationsMap,
+}: {
+  approvedIndices: number[]
+  providers: Provider[]
+  quotationsErrorMap: Record<number, string>
+  quotationsLoadingSet: number[]
+  quotationsMap: Record<number, ProcurementQuoteResponse>
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(
+    approvedIndices[0] ?? null
+  )
+
+  // Keep activeIndex valid when approvedIndices changes
+  useEffect(() => {
+    if (activeIndex === null && approvedIndices.length > 0) {
+      setActiveIndex(approvedIndices[0])
+    }
+  }, [activeIndex, approvedIndices])
+
+  if (approvedIndices.length === 0) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+        No suppliers were approved for RFQ. Go back and approve at least one supplier.
+      </div>
+    )
+  }
+
+  return (
+    <section className="flex flex-col gap-5">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">RFQ Campaign</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {approvedIndices.length} supplier{approvedIndices.length !== 1 ? "s" : ""} included ·
+          Review each RFQ before sending.
+        </p>
+      </div>
+
+      {/* Supplier tab switcher */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {approvedIndices.map((idx) => {
+          const p = providers[idx]
+          if (!p) return null
+          const isLoading = quotationsLoadingSet.includes(idx)
+          const isDone = Boolean(quotationsMap[idx])
+          const hasError = Boolean(quotationsErrorMap[idx])
+          const isActive = activeIndex === idx
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setActiveIndex(idx)}
+              className="flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-medium transition-all"
+              style={
+                isActive
+                  ? { background: "var(--p-accent)", color: "white", border: "1px solid transparent" }
+                  : {
+                      background: "var(--p-surface)",
+                      color: "var(--p-muted)",
+                      border: "1px solid var(--p-border)",
+                    }
+              }
+            >
+              {isLoading && <SpinnerGap size={12} weight="bold" className="animate-spin" />}
+              {isDone && !isLoading && (
+                <CheckCircle
+                  size={12}
+                  weight="fill"
+                  style={{ color: isActive ? "white" : "var(--p-accent)" }}
+                />
+              )}
+              {hasError && !isLoading && (
+                <WarningCircle
+                  size={12}
+                  weight="duotone"
+                  style={{ color: isActive ? "white" : "var(--p-rose)" }}
+                />
+              )}
+              {p.name}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Active supplier's RFQ */}
+      {activeIndex !== null && (
+        <SupplierQuoteCard
+          key={activeIndex}
+          error={quotationsErrorMap[activeIndex] ?? null}
+          loading={quotationsLoadingSet.includes(activeIndex)}
+          provider={providers[activeIndex]}
+          quote={quotationsMap[activeIndex] ?? null}
+        />
+      )}
     </section>
   )
 }
@@ -1056,7 +1521,6 @@ export function SearchResults({
     () =>
       new DefaultChatTransport({
         api: "/api/search",
-        // Send only what the server needs: the chat id + the message list.
         prepareSendMessagesRequest: ({ id, messages }) => ({
           body: { id, messages },
         }),
@@ -1069,35 +1533,50 @@ export function SearchResults({
     transport,
     messages: initialMessages,
   })
+
+  // ── Procurement search state ──
   const [searchRevision, setSearchRevision] = useState(0)
-  const [procurementPayload, setProcurementPayload] =
-    useState<ProcurementSearchPayload | null>(null)
-  const [procurementResponse, setProcurementResponse] =
-    useState<ProcurementSearchResponse | null>(null)
+  const [procurementPayload, setProcurementPayload] = useState<ProcurementSearchPayload | null>(null)
+  const [procurementResponse, setProcurementResponse] = useState<ProcurementSearchResponse | null>(null)
   const [procurementLoading, setProcurementLoading] = useState(false)
   const [procurementError, setProcurementError] = useState<string | null>(null)
-  const [procurementStep, setProcurementStep] =
-    useState<ProcurementWorkflowStep>(0)
-  const [selectedCompanyIndex, setSelectedCompanyIndex] = useState<number | null>(null)
-  const [companyDetails, setCompanyDetails] =
-    useState<ProcurementCompanyDetailsResponse | null>(null)
-  const [companyDetailsLoading, setCompanyDetailsLoading] = useState(false)
-  const [companyDetailsError, setCompanyDetailsError] = useState<string | null>(null)
-  const [quotation, setQuotation] = useState<ProcurementQuoteResponse | null>(null)
-  const [quotationLoading, setQuotationLoading] = useState(false)
-  const [quotationError, setQuotationError] = useState<string | null>(null)
+  const [procurementStep, setProcurementStep] = useState<ProcurementWorkflowStep>(0)
+
+  // ── Multi-select supplier state (step 1) ──
+  const [selectedCompanyIndices, setSelectedCompanyIndices] = useState<number[]>([])
+
+  // ── Review & approve state (step 2) ──
+  const [approvedIndices, setApprovedIndices] = useState<number[]>([])
+  const [reviewExpandedIndex, setReviewExpandedIndex] = useState<number | null>(null)
+  const [companyDetailsMap, setCompanyDetailsMap] = useState<
+    Record<number, ProcurementCompanyDetailsResponse>
+  >({})
+  const [companyDetailsLoadingSet, setCompanyDetailsLoadingSet] = useState<number[]>([])
+  const [companyDetailsErrorMap, setCompanyDetailsErrorMap] = useState<Record<number, string>>({})
+
+  // ── RFQ generation state (step 3) ──
+  const [quotationsMap, setQuotationsMap] = useState<Record<number, ProcurementQuoteResponse>>({})
+  const [quotationsLoadingSet, setQuotationsLoadingSet] = useState<number[]>([])
+  const [quotationsErrorMap, setQuotationsErrorMap] = useState<Record<number, string>>({})
+  // Ref tracks which quotations have been started — prevents strict-mode double-fire
+  const quotationStartedRef = useRef<Set<number>>(new Set())
+
+  // ── Audit trail ──
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
+
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
     () => false
   )
 
+  // ── Chat store sync ──
   const hydrateChat = useChatStore((s) => s.hydrate)
   const setConversation = useChatStore((s) => s.setConversation)
   const setVisibleMessages = useChatStore((s) => s.setVisibleMessages)
   const setStoreStatus = useChatStore((s) => s.setStatus)
 
+  // ── Procurement header store sync ──
   const setProcStep = useProcurementStore((s) => s.setStep)
   const setProcStatus = useProcurementStore((s) => s.setStatus)
   const setProcSuppliersFound = useProcurementStore((s) => s.setSuppliersFound)
@@ -1105,7 +1584,6 @@ export function SearchResults({
 
   useEffect(() => {
     if (isProcurementMode) return
-
     hydrateChat({
       conversation: { chatId, query },
       messages: initialMessages,
@@ -1115,53 +1593,46 @@ export function SearchResults({
 
   useEffect(() => {
     if (isProcurementMode) return
-
     setConversation({ chatId, query })
     setVisibleMessages(messages)
     setStoreStatus(status)
-  }, [
-    chatId,
-    query,
-    messages,
-    status,
-    setConversation,
-    setStoreStatus,
-    setVisibleMessages,
-    isProcurementMode,
-  ])
+  }, [chatId, query, messages, status, setConversation, setStoreStatus, setVisibleMessages, isProcurementMode])
+
+  // ── Procurement: bootstrap search from sessionStorage ─────────────────────────
 
   useEffect(() => {
     if (!isProcurementMode || !mounted || !chatId) return
+
+    // Reset all state
     setProcurementPayload(null)
     setProcurementResponse(null)
     setProcurementError(null)
     setProcurementStep(0)
-    setSelectedCompanyIndex(null)
-    setCompanyDetails(null)
-    setCompanyDetailsError(null)
-    setQuotation(null)
-    setQuotationError(null)
+    setSelectedCompanyIndices([])
+    setApprovedIndices([])
+    setReviewExpandedIndex(null)
+    setCompanyDetailsMap({})
+    setCompanyDetailsLoadingSet([])
+    setCompanyDetailsErrorMap({})
+    setQuotationsMap({})
+    setQuotationsLoadingSet([])
+    setQuotationsErrorMap({})
+    quotationStartedRef.current.clear()
 
     let parsedPayload: ProcurementSearchPayload
 
     try {
-      const stored = window.sessionStorage.getItem(
-        procurementSearchStorageKey(chatId)
-      )
-
+      const stored = window.sessionStorage.getItem(procurementSearchStorageKey(chatId))
       if (!stored) {
         throw new Error(
           "Structured procurement request was not found. Edit the original prompt and submit it again."
         )
       }
-
       parsedPayload = JSON.parse(stored) as ProcurementSearchPayload
       setProcurementPayload(parsedPayload)
     } catch (error) {
       setProcurementError(
-        error instanceof Error
-          ? error.message
-          : "Structured procurement request was not found."
+        error instanceof Error ? error.message : "Structured procurement request was not found."
       )
       return
     }
@@ -1171,36 +1642,27 @@ export function SearchResults({
 
     fetch("/api/procurement/search", {
       body: JSON.stringify(parsedPayload),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       method: "POST",
       signal: controller.signal,
     })
       .then(async (response) => {
         const data = await response.json().catch(() => null)
-
-        if (!response.ok) {
-          throw new Error(data?.error ?? "Supplier search failed")
-        }
-
+        if (!response.ok) throw new Error(data?.error ?? "Supplier search failed")
         setProcurementResponse(data as ProcurementSearchResponse)
       })
       .catch((error) => {
         if (controller.signal.aborted) return
-
-        setProcurementError(
-          error instanceof Error ? error.message : "Supplier search failed"
-        )
+        setProcurementError(error instanceof Error ? error.message : "Supplier search failed")
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
-          setProcurementLoading(false)
-        }
+        if (!controller.signal.aborted) setProcurementLoading(false)
       })
 
     return () => controller.abort()
   }, [chatId, isProcurementMode, mounted, searchRevision])
+
+  // ── Refine search ─────────────────────────────────────────────────────────────
 
   const refineSearch = (extraValues: Partial<Record<ProcurementFieldKey, string>>) => {
     const stored = window.sessionStorage.getItem(procurementSearchStorageKey(chatId))
@@ -1244,7 +1706,11 @@ export function SearchResults({
       ...prev,
       {
         id: crypto.randomUUID(),
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
         label,
         detail,
       },
@@ -1254,74 +1720,54 @@ export function SearchResults({
   useEffect(() => {
     if (!isProcurementMode || !procurementLoading) return
     logAudit("Search started", query)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [procurementLoading])
 
   useEffect(() => {
     if (!isProcurementMode || !procurementResponse) return
     const count = procurementResponse.results?.length ?? 0
     logAudit("Suppliers found", `${count} matching supplier${count !== 1 ? "s" : ""}`)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [procurementResponse])
 
-  useEffect(() => {
-    if (!isProcurementMode || selectedCompanyIndex === null) return
-    const name = procurementResultName(procurementResponse?.results[selectedCompanyIndex])
-    if (name) logAudit("Company selected", name)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCompanyIndex])
+  // ── Procurement store sync (header) ───────────────────────────────────────────
 
-  useEffect(() => {
-    if (!isProcurementMode || !companyDetails) return
-    logAudit("Details fetched", companyDetails.company.name)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyDetails])
-
-  useEffect(() => {
-    if (!isProcurementMode || !quotation) return
-    logAudit("Quotation generated", quotation.quotation.providerCompany)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotation])
-
-  // ── Sync procurement state → header store ─────────────────────────────────────
-
-  // Reset store when this chat id changes (new request)
   useEffect(() => {
     if (!isProcurementMode) return
     resetProcStore()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, isProcurementMode])
 
-  // Mirror workflow step label
   useEffect(() => {
     if (!isProcurementMode) return
     setProcStep(procurementStep, procurementWorkflowSteps[procurementStep])
   }, [isProcurementMode, procurementStep, setProcStep])
 
-  // Mirror status
   useEffect(() => {
     if (!isProcurementMode) return
     if (procurementLoading) { setProcStatus("searching"); return }
-    if (companyDetailsLoading) { setProcStatus("analyzing"); return }
-    if (quotationLoading) { setProcStatus("generating"); return }
-    if (quotation) { setProcStatus("complete"); return }
-    if (companyDetails) { setProcStatus("analyzing"); return }
-    if (selectedCompanyIndex === null && procurementResponse) { setProcStatus("awaiting-selection"); return }
+    if (companyDetailsLoadingSet.length > 0) { setProcStatus("analyzing"); return }
+    if (quotationsLoadingSet.length > 0) { setProcStatus("generating"); return }
+    const doneQuotes = Object.keys(quotationsMap).length
+    if (doneQuotes > 0 && doneQuotes === approvedIndices.length) { setProcStatus("complete"); return }
+    if (procurementStep === 2 && approvedIndices.length > 0) { setProcStatus("analyzing"); return }
+    if (selectedCompanyIndices.length === 0 && procurementResponse) { setProcStatus("awaiting-selection"); return }
     if (procurementResponse) { setProcStatus("idle"); return }
     setProcStatus("idle")
   }, [
     isProcurementMode,
     procurementLoading,
-    companyDetailsLoading,
-    quotationLoading,
-    quotation,
-    companyDetails,
-    selectedCompanyIndex,
+    companyDetailsLoadingSet.length,
+    quotationsLoadingSet.length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    Object.keys(quotationsMap).length,
+    approvedIndices.length,
+    procurementStep,
+    selectedCompanyIndices.length,
     procurementResponse,
     setProcStatus,
   ])
 
-  // Mirror suppliers found count
   useEffect(() => {
     if (!isProcurementMode) return
     if (procurementResponse) {
@@ -1331,7 +1777,131 @@ export function SearchResults({
     }
   }, [isProcurementMode, procurementResponse, setProcSuppliersFound])
 
-  // Auto-send the query only on a fresh chat (no persisted messages).
+  // ── Company details: on-demand fetch (triggered by card expand) ───────────────
+
+  const fetchCompanyDetails = useCallback(
+    (index: number) => {
+      if (companyDetailsMap[index] || companyDetailsLoadingSet.includes(index)) return
+      const company = procurementResponse?.results[index]
+      if (!company || !procurementPayload || !procurementResponse) return
+
+      setCompanyDetailsLoadingSet((prev) => [...prev, index])
+      setCompanyDetailsErrorMap((prev) => {
+        const next = { ...prev }
+        delete next[index]
+        return next
+      })
+
+      fetch("/api/procurement/company-details", {
+        body: JSON.stringify({
+          company,
+          normalizedRequest: procurementResponse.normalizedRequest,
+          rawText: procurementPayload.rawText,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => null)
+          if (!res.ok) throw new Error(data?.error ?? "Company details lookup failed")
+          setCompanyDetailsMap((prev) => ({
+            ...prev,
+            [index]: data as ProcurementCompanyDetailsResponse,
+          }))
+          logAudit("Details fetched", (data as ProcurementCompanyDetailsResponse).company.name)
+        })
+        .catch((err) => {
+          setCompanyDetailsErrorMap((prev) => ({
+            ...prev,
+            [index]: err instanceof Error ? err.message : "Company details lookup failed",
+          }))
+        })
+        .finally(() => {
+          setCompanyDetailsLoadingSet((prev) => prev.filter((i) => i !== index))
+        })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [companyDetailsMap, companyDetailsLoadingSet, procurementPayload, procurementResponse, logAudit]
+  )
+
+  const handleExpandCard = useCallback(
+    (index: number) => {
+      setReviewExpandedIndex((prev) => {
+        const next = prev === index ? null : index
+        if (next !== null) fetchCompanyDetails(next)
+        return next
+      })
+    },
+    [fetchCompanyDetails]
+  )
+
+  // ── Quote generation: triggered when entering step 3 ─────────────────────────
+
+  // Use a stable string key for the dep array to avoid re-running for same set
+  const approvedIndicesKey = useMemo(
+    () => [...approvedIndices].sort((a, b) => a - b).join(","),
+    [approvedIndices]
+  )
+
+  useEffect(() => {
+    if (!isProcurementMode || procurementStep !== 3) return
+    if (!procurementPayload || !procurementResponse) return
+
+    for (const index of approvedIndices) {
+      if (quotationStartedRef.current.has(index)) continue
+      quotationStartedRef.current.add(index)
+
+      const company = procurementResponse.results[index]
+      if (!company) continue
+
+      const details = companyDetailsMap[index] ?? null
+
+      setQuotationsLoadingSet((prev) => [...prev, index])
+      setQuotationsErrorMap((prev) => {
+        const next = { ...prev }
+        delete next[index]
+        return next
+      })
+
+      fetch("/api/procurement/generate-quote", {
+        body: JSON.stringify({
+          companyDetails: details,
+          normalizedRequest: procurementResponse.normalizedRequest,
+          rawText: procurementPayload.rawText,
+          selectedCompany: company,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => null)
+          if (!res.ok) {
+            // Surface per-field Zod validation issues when available so regressions
+            // are immediately diagnosable rather than showing a generic message.
+            const issues = (data?.issues as Array<{ path: string; message: string }> | undefined)
+            const detail = issues?.length
+              ? issues.map((i) => `${i.path || "request"}: ${i.message}`).join(" · ")
+              : null
+            throw new Error(detail ?? data?.error ?? "Quotation generation failed")
+          }
+          setQuotationsMap((prev) => ({ ...prev, [index]: data as ProcurementQuoteResponse }))
+          logAudit("RFQ generated", (data as ProcurementQuoteResponse).quotation.providerCompany)
+        })
+        .catch((err) => {
+          setQuotationsErrorMap((prev) => ({
+            ...prev,
+            [index]: err instanceof Error ? err.message : "Quotation generation failed",
+          }))
+        })
+        .finally(() => {
+          setQuotationsLoadingSet((prev) => prev.filter((i) => i !== index))
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProcurementMode, procurementStep, approvedIndicesKey, procurementPayload, procurementResponse])
+
+  // ── Chat: auto-send on fresh chat ─────────────────────────────────────────────
+
   const sentRef = useRef<string | null>(null)
   useEffect(() => {
     if (isProcurementMode) return
@@ -1342,10 +1912,14 @@ export function SearchResults({
     sendMessage({ text: query })
   }, [chatId, query, initialMessages.length, sendMessage, isProcurementMode])
 
+  // ── Derived values ─────────────────────────────────────────────────────────────
+
   const { providers, markdown } = useMemo(() => extractFromAssistant(messages), [messages])
   const completeProviders = useMemo(
     () =>
-      providers.filter((p) => !!(p.name && p.url && typeof p.score === "number" && p.reasoning)) as Provider[],
+      providers.filter(
+        (p) => !!(p.name && p.url && typeof p.score === "number" && p.reasoning)
+      ) as Provider[],
     [providers]
   )
   const procurementSourceProviders = useMemo(
@@ -1356,15 +1930,9 @@ export function SearchResults({
     () => (procurementResponse ? procurementReasoning(procurementResponse) : ""),
     [procurementResponse]
   )
-  const sourcePanelProviders = isProcurementMode
-    ? procurementSourceProviders
-    : completeProviders
-  const selectedCompany =
-    selectedCompanyIndex !== null
-      ? procurementResponse?.results[selectedCompanyIndex] ?? null
-      : null
+  const sourcePanelProviders = isProcurementMode ? procurementSourceProviders : completeProviders
 
-  // ── Phase timeline (dynamic, derived from real state) ────────────────────────
+  // ── Phase timeline ─────────────────────────────────────────────────────────────
 
   const mountTimeRef = useRef(
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -1375,7 +1943,7 @@ export function SearchResults({
       auditEvents.find((e) => e.label === label)?.timestamp ?? ""
 
     const supplierCount = procurementResponse?.results?.length ?? 0
-    const selectedName = procurementResultName(selectedCompany)
+    const doneQuoteCount = Object.keys(quotationsMap).length
 
     return [
       {
@@ -1403,179 +1971,100 @@ export function SearchResults({
       {
         id: "selection",
         n: "03",
-        title: "Company selected",
-        status: selectedCompany ? "done" : procurementResponse ? "active" : "queued",
-        when: selectedCompany ? t("Company selected") : procurementResponse ? "Awaiting selection" : "",
+        title: "Suppliers selected",
+        status:
+          approvedIndices.length > 0
+            ? "done"
+            : selectedCompanyIndices.length > 0
+            ? "active"
+            : procurementResponse
+            ? "active"
+            : "queued",
+        when:
+          approvedIndices.length > 0
+            ? t("Suppliers selected")
+            : selectedCompanyIndices.length > 0
+            ? "Selecting…"
+            : "",
         actor: "You",
-        summary: selectedCompany
-          ? `Selected: ${selectedName}`
-          : "Choose the best-matching supplier from the list.",
+        summary:
+          selectedCompanyIndices.length > 0
+            ? `${selectedCompanyIndices.length} supplier${
+                selectedCompanyIndices.length !== 1 ? "s" : ""
+              } selected for review.`
+            : "Choose suppliers from the list.",
       },
       {
-        id: "details",
+        id: "review",
         n: "04",
-        title: "Provider analysis",
-        status: companyDetails ? "done" : companyDetailsLoading ? "active" : "queued",
-        when: companyDetails ? t("Details fetched") : companyDetailsLoading ? "Running…" : "",
-        actor: "Procora · analysis",
-        summary: companyDetails
-          ? `${companyDetails.company.name} profile loaded.`
-          : companyDetailsLoading
-          ? "Fetching supplier details and certifications…"
-          : "Deep analysis of supplier certifications, pricing and history.",
+        title: "Supplier review",
+        status:
+          procurementStep >= 3
+            ? "done"
+            : procurementStep === 2
+            ? "active"
+            : "queued",
+        when:
+          procurementStep >= 3
+            ? t("Approved for RFQ")
+            : procurementStep === 2
+            ? "Reviewing…"
+            : "",
+        actor: "You · Procora",
+        summary:
+          approvedIndices.length > 0
+            ? `${approvedIndices.length} supplier${
+                approvedIndices.length !== 1 ? "s" : ""
+              } approved for RFQ.`
+            : "Validate and approve suppliers before sending RFQs.",
       },
       {
-        id: "quotation",
+        id: "rfq",
         n: "05",
-        title: "Quotation ready",
-        status: quotation ? "done" : quotationLoading ? "active" : "queued",
-        when: quotation ? t("Quotation generated") : quotationLoading ? "Generating…" : "",
+        title: "RFQs generated",
+        status:
+          doneQuoteCount > 0 && doneQuoteCount === approvedIndices.length
+            ? "done"
+            : quotationsLoadingSet.length > 0
+            ? "active"
+            : "queued",
+        when:
+          doneQuoteCount > 0
+            ? t("RFQ generated")
+            : quotationsLoadingSet.length > 0
+            ? "Generating…"
+            : "",
         actor: "Procora · RFQ",
-        summary: quotation
-          ? `RFQ generated for ${quotation.quotation.providerCompany}.`
-          : quotationLoading
-          ? "Generating request for quotation…"
-          : "Auto-generates RFQ document and supplier email.",
+        summary:
+          doneQuoteCount > 0
+            ? `${doneQuoteCount} RFQ${doneQuoteCount !== 1 ? "s" : ""} ready to send.`
+            : quotationsLoadingSet.length > 0
+            ? "Generating request-for-quotation documents…"
+            : "Auto-generates RFQ documents and supplier emails.",
       },
     ]
   }, [
     auditEvents,
     procurementResponse,
     procurementLoading,
-    selectedCompany,
-    companyDetails,
-    companyDetailsLoading,
-    quotation,
-    quotationLoading,
+    selectedCompanyIndices,
+    approvedIndices,
+    procurementStep,
+    quotationsMap,
+    quotationsLoadingSet,
     query,
   ])
 
-  useEffect(() => {
-    if (!isProcurementMode || !selectedCompany || procurementStep < 2) return
-    if (!procurementPayload || !procurementResponse) return
-    if (companyDetails?.company.url === selectedCompany.url) return
+  // ── Sources panel positioning ──────────────────────────────────────────────────
 
-    const controller = new AbortController()
-    setCompanyDetailsLoading(true)
-    setCompanyDetailsError(null)
-    setCompanyDetails(null)
-    setQuotation(null)
-    setQuotationError(null)
-
-    fetch("/api/procurement/company-details", {
-      body: JSON.stringify({
-        company: selectedCompany,
-        normalizedRequest: procurementResponse.normalizedRequest,
-        rawText: procurementPayload.rawText,
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const data = await response.json().catch(() => null)
-
-        if (!response.ok) {
-          throw new Error(data?.error ?? "Company details lookup failed")
-        }
-
-        setCompanyDetails(data as ProcurementCompanyDetailsResponse)
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return
-
-        setCompanyDetailsError(
-          error instanceof Error ? error.message : "Company details lookup failed"
-        )
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setCompanyDetailsLoading(false)
-        }
-      })
-
-    return () => controller.abort()
-  }, [
-    companyDetails?.company.url,
-    isProcurementMode,
-    procurementPayload,
-    procurementResponse,
-    procurementStep,
-    selectedCompany,
-  ])
-
-  useEffect(() => {
-    if (!isProcurementMode || procurementStep < 3) return
-    if (!procurementPayload || !procurementResponse || !selectedCompany || !companyDetails) {
-      return
-    }
-    if (quotation?.quotation.providerCompany === companyDetails.company.name) return
-
-    const controller = new AbortController()
-    setQuotationLoading(true)
-    setQuotationError(null)
-
-    fetch("/api/procurement/generate-quote", {
-      body: JSON.stringify({
-        companyDetails,
-        normalizedRequest: procurementResponse.normalizedRequest,
-        rawText: procurementPayload.rawText,
-        selectedCompany,
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const data = await response.json().catch(() => null)
-
-        if (!response.ok) {
-          throw new Error(data?.error ?? "Quotation generation failed")
-        }
-
-        setQuotation(data as ProcurementQuoteResponse)
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return
-
-        setQuotationError(
-          error instanceof Error ? error.message : "Quotation generation failed"
-        )
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setQuotationLoading(false)
-        }
-      })
-
-    return () => controller.abort()
-  }, [
-    companyDetails,
-    isProcurementMode,
-    procurementPayload,
-    procurementResponse,
-    procurementStep,
-    quotation?.quotation.providerCompany,
-    selectedCompany,
-  ])
-
-  // ── sources panel positioning ────────────────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(false)
-  // Separate "visible" flag so the panel only renders AFTER the content has
-  // finished shifting left, and is hidden BEFORE the content shifts back.
   const [panelVisible, setPanelVisible] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
   const [panelPos, setPanelPos] = useState<{ left: number; top: number } | null>(null)
   const SHIFT = 170
 
   useEffect(() => {
-    if (!panelOpen || !contentRef.current) {
-      return
-    }
+    if (!panelOpen || !contentRef.current) return
     const update = () => {
       const el = contentRef.current
       if (!el) return
@@ -1600,36 +2089,83 @@ export function SearchResults({
   const nothingYet = providers.length === 0 && !markdown
   const requestStarted = initialMessages.length > 0 || messages.length > 0 || isStreaming
   const searchComplete = requestStarted && status === "ready"
+
   const showSourcesPanel = () => {
     if (panelVisible) {
-      // Closing: play the panel exit; unshift happens onExitComplete.
       setPanelVisible(false)
     } else {
-      // Opening: shift first; panelVisible flips on animation complete.
       setPanelOpen(true)
     }
   }
+
+  // ── Navigation logic ───────────────────────────────────────────────────────────
+
   const procurementNextDisabled =
-    (procurementStep === 0 && (!procurementResponse || procurementLoading || Boolean(procurementError))) ||
-    (procurementStep === 1 && selectedCompanyIndex === null) ||
-    (procurementStep === 2 && (!companyDetails || companyDetailsLoading || Boolean(companyDetailsError))) ||
+    (procurementStep === 0 &&
+      (!procurementResponse || procurementLoading || Boolean(procurementError))) ||
+    (procurementStep === 1 && selectedCompanyIndices.length === 0) ||
+    (procurementStep === 2 && approvedIndices.length === 0) ||
     procurementStep === 3
+
   const goToNextProcurementStep = () => {
     if (procurementNextDisabled) return
-    setProcurementStep((step) => Math.min(3, step + 1) as ProcurementWorkflowStep)
+    const nextStep = Math.min(3, procurementStep + 1) as ProcurementWorkflowStep
+
+    // Entering Review & Approve: init approved = all selected
+    if (procurementStep === 1 && nextStep === 2) {
+      setApprovedIndices([...selectedCompanyIndices])
+      setCompanyDetailsMap({})
+      setCompanyDetailsLoadingSet([])
+      setCompanyDetailsErrorMap({})
+      setReviewExpandedIndex(null)
+      logAudit(
+        "Suppliers selected",
+        `${selectedCompanyIndices.length} selected for review`
+      )
+    }
+
+    // Entering Send RFQs: clear ref so quotes regenerate if needed
+    if (procurementStep === 2 && nextStep === 3) {
+      quotationStartedRef.current.clear()
+      logAudit(
+        "Approved for RFQ",
+        `${approvedIndices.length} supplier${approvedIndices.length !== 1 ? "s" : ""} approved`
+      )
+    }
+
+    setProcurementStep(nextStep)
   }
+
   const goToPreviousProcurementStep = () => {
     setProcurementStep((step) => Math.max(0, step - 1) as ProcurementWorkflowStep)
   }
+
   const goToProcurementStep = (step: ProcurementWorkflowStep) => {
     setProcurementStep(step)
   }
+
   const procurementStepAccessible = [
     true,
     Boolean(procurementResponse),
-    selectedCompanyIndex !== null,
-    Boolean(companyDetails),
+    selectedCompanyIndices.length > 0,
+    approvedIndices.length > 0,
   ]
+
+  // ── Supplier actions ───────────────────────────────────────────────────────────
+
+  const toggleSupplierSelection = useCallback((provider: Provider, index: number) => {
+    setSelectedCompanyIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    )
+  }, [])
+
+  const toggleApproval = useCallback((index: number) => {
+    setApprovedIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    )
+  }, [])
+
+  // ── SSR guard ──────────────────────────────────────────────────────────────────
 
   if (!mounted) {
     return (
@@ -1639,97 +2175,94 @@ export function SearchResults({
     )
   }
 
+  // ── Procurement mode render ────────────────────────────────────────────────────
+
   if (isProcurementMode) {
     return (
       <>
         <PhaseTimeline phases={timelinePhases} />
         <div className="flex gap-6 items-start">
-        <motion.div
-          ref={contentRef}
-          animate={{ x: panelOpen ? -SHIFT : 0 }}
-          transition={{ duration: 0.3, ease: "easeInOut" }}
-          onAnimationComplete={() => {
-            // Reveal the side panel only once the shift-left settles.
-            if (panelOpen) setPanelVisible(true)
-          }}
-          className="flex-1 min-w-0 flex flex-col gap-8"
-        >
-          <ProcurementWorkflowChrome
-            currentStep={procurementStep}
-            heading={heading}
-            nextDisabled={procurementNextDisabled}
-            onBack={goToPreviousProcurementStep}
-            onNext={goToNextProcurementStep}
-            onGoToStep={goToProcurementStep}
-            stepAccessible={procurementStepAccessible}
+          <motion.div
+            ref={contentRef}
+            animate={{ x: panelOpen ? -SHIFT : 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            onAnimationComplete={() => {
+              if (panelOpen) setPanelVisible(true)
+            }}
+            className="flex-1 min-w-0 flex flex-col gap-8"
           >
-            {procurementStep === 0 && (
-              <AnalysisStep
-                error={procurementError}
-                loading={procurementLoading}
-                onRefine={refineSearch}
-                onShowSources={showSourcesPanel}
-                payload={procurementPayload}
-                response={procurementResponse}
-                sourceProviders={procurementSourceProviders}
-                sourceReasoning={procurementSourceReasoning}
-              />
-            )}
+            <ProcurementWorkflowChrome
+              currentStep={procurementStep}
+              heading={heading}
+              nextDisabled={procurementNextDisabled}
+              onBack={goToPreviousProcurementStep}
+              onNext={goToNextProcurementStep}
+              onGoToStep={goToProcurementStep}
+              stepAccessible={procurementStepAccessible}
+            >
+              {procurementStep === 0 && (
+                <AnalysisStep
+                  error={procurementError}
+                  loading={procurementLoading}
+                  onRefine={refineSearch}
+                  onShowSources={showSourcesPanel}
+                  payload={procurementPayload}
+                  response={procurementResponse}
+                  sourceProviders={procurementSourceProviders}
+                  sourceReasoning={procurementSourceReasoning}
+                />
+              )}
 
-            {procurementStep === 1 && (
-              <CompaniesStep
-                onSelectCompany={(_, index) => {
-                  if (selectedCompanyIndex !== index) {
-                    setCompanyDetails(null)
-                    setCompanyDetailsError(null)
-                    setQuotation(null)
-                    setQuotationError(null)
-                  }
-                  setSelectedCompanyIndex(index)
-                }}
-                providers={procurementSourceProviders}
-                selectedIndex={selectedCompanyIndex}
-              />
-            )}
+              {procurementStep === 1 && (
+                <CompaniesStep
+                  onToggleCompany={toggleSupplierSelection}
+                  providers={procurementSourceProviders}
+                  selectedIndices={selectedCompanyIndices}
+                />
+              )}
 
-            {procurementStep === 2 && (
-              <CompanyDetailsStep
-                details={companyDetails}
-                error={companyDetailsError}
-                loading={companyDetailsLoading}
-                selectedCompany={selectedCompany}
-              />
-            )}
+              {procurementStep === 2 && (
+                <ReviewAndApproveStep
+                  approvedIndices={approvedIndices}
+                  companyDetailsErrorMap={companyDetailsErrorMap}
+                  companyDetailsLoadingSet={companyDetailsLoadingSet}
+                  companyDetailsMap={companyDetailsMap}
+                  expandedIndex={reviewExpandedIndex}
+                  onContinue={goToNextProcurementStep}
+                  onExpandCard={handleExpandCard}
+                  onToggleApproval={toggleApproval}
+                  providers={procurementSourceProviders}
+                  selectedIndices={selectedCompanyIndices}
+                />
+              )}
 
-            {procurementStep === 3 && (
-              <QuoteStep
-                error={quotationError}
-                loading={quotationLoading}
-                quote={quotation}
-              />
-            )}
-          </ProcurementWorkflowChrome>
-        </motion.div>
+              {procurementStep === 3 && (
+                <MultiRFQStep
+                  approvedIndices={approvedIndices}
+                  providers={procurementSourceProviders}
+                  quotationsErrorMap={quotationsErrorMap}
+                  quotationsLoadingSet={quotationsLoadingSet}
+                  quotationsMap={quotationsMap}
+                />
+              )}
+            </ProcurementWorkflowChrome>
+          </motion.div>
 
-        <AuditTrail events={auditEvents} />
+          <AuditTrail events={auditEvents} />
         </div>
 
         <SourcesPanel
           providers={procurementSourceProviders}
           visible={panelVisible}
-          onClose={() => {
-            // Trigger the panel's exit animation; the unshift fires onExitComplete.
-            setPanelVisible(false)
-          }}
-          onExitComplete={() => {
-            // Once the panel has fully eased out, slide the content back.
-            setPanelOpen(false)
-          }}
+          onClose={() => setPanelVisible(false)}
+          onExitComplete={() => setPanelOpen(false)}
           position={panelPos}
         />
       </>
     )
   }
+
+  // ── Chat mode render ───────────────────────────────────────────────────────────
 
   if (nothingYet && isStreaming) {
     return (
@@ -1762,7 +2295,6 @@ export function SearchResults({
         animate={{ x: panelOpen ? -SHIFT : 0 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         onAnimationComplete={() => {
-          // Reveal the side panel only once the shift-left settles.
           if (panelOpen) setPanelVisible(true)
         }}
         className="max-w-3xl mx-auto flex flex-col gap-8"
@@ -1775,10 +2307,7 @@ export function SearchResults({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <SourceChips
-              providers={completeProviders}
-              onShowAll={showSourcesPanel}
-            />
+            <SourceChips providers={completeProviders} onShowAll={showSourcesPanel} />
           </motion.div>
         )}
 
@@ -1794,14 +2323,8 @@ export function SearchResults({
       <SourcesPanel
         providers={completeProviders}
         visible={panelVisible}
-        onClose={() => {
-          // Trigger the panel's exit animation; the unshift fires onExitComplete.
-          setPanelVisible(false)
-        }}
-        onExitComplete={() => {
-          // Once the panel has fully eased out, slide the content back.
-          setPanelOpen(false)
-        }}
+        onClose={() => setPanelVisible(false)}
+        onExitComplete={() => setPanelOpen(false)}
         position={panelPos}
       />
     </>

@@ -125,7 +125,9 @@ export const companyDetailsResponseSchema = z
 
 export const quoteRequestSchema = z
   .object({
-    companyDetails: companyDetailsResponseSchema,
+    // companyDetails is optional — when absent (user skipped the card-expand step)
+    // the quote generator synthesises minimal details from selectedCompany.
+    companyDetails: companyDetailsResponseSchema.nullable().optional(),
     normalizedRequest: normalizedRequestSchema,
     rawText: z.string().min(1).max(6000),
     selectedCompany: supplierResultSchema,
@@ -403,6 +405,43 @@ export async function getProcurementCompanyDetails(
   }
 }
 
+// ── Synthetic company details ──────────────────────────────────────────────────
+// Built from the raw supplier search result when the user skipped the review
+// card-expand step and real company details were never fetched.
+
+function syntheticCompanyDetails(
+  company: ProcurementSupplierResult,
+  request: NormalizedProcurementRequest
+): ProcurementCompanyDetails {
+  const domain = company.domain || domainFromUrl(company.url)
+  const name = company.companyName || company.supplierName || company.title
+  const content = `${company.snippet} ${company.url} ${company.title}`
+
+  return {
+    budgetFit: budgetFit(request, company),
+    company: {
+      domain,
+      name,
+      score: company.score ?? Math.round(company.estimatedFit * 100),
+      url: company.url,
+    },
+    complianceFit: complianceFit(content),
+    deliveryFit: deliveryFit(request, company, content),
+    evidence: [
+      {
+        snippet: company.snippet,
+        title: company.title,
+        url: company.url,
+      },
+    ],
+    matchingSpecifications: matchingSpecifications(request, content),
+    priceRange: "Not found — confirm with provider",
+    productAvailability: productAvailability(request, content),
+    risks: risks(company, content),
+    usefulLinks: linksFromResultMetadata(company),
+  }
+}
+
 function budgetSummary(request: NormalizedProcurementRequest) {
   if (!request.budget) return "Not specified"
   const type = request.budget.type === "per_unit" ? "per unit" : request.budget.type
@@ -498,25 +537,23 @@ function providerEmail(
 export function generateProcurementQuote(
   request: z.infer<typeof quoteRequestSchema>
 ): ProcurementQuoteResponse {
+  // Fall back to synthetic details when the user skipped the card-expand step
+  const companyDetails =
+    request.companyDetails ??
+    syntheticCompanyDetails(request.selectedCompany, request.normalizedRequest)
+
   const generatedDate = new Date().toISOString().slice(0, 10)
   const appName = "Procora"
   const title = "Request for Quotation"
-  const sections = quotationSections(
-    request.normalizedRequest,
-    request.companyDetails
-  )
+  const sections = quotationSections(request.normalizedRequest, companyDetails)
 
   return {
     documentText: documentTextFromSections(title, generatedDate, sections),
-    email: providerEmail(
-      request.normalizedRequest,
-      request.selectedCompany,
-      request.companyDetails
-    ),
+    email: providerEmail(request.normalizedRequest, request.selectedCompany, companyDetails),
     quotation: {
       appName,
       generatedDate,
-      providerCompany: request.companyDetails.company.name,
+      providerCompany: companyDetails.company.name,
       sections,
       title,
     },

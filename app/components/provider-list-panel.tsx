@@ -43,6 +43,8 @@ function warningLabel(warnings?: string[]) {
 function CompanyResultCard({
   expanded,
   index,
+  multiSelect,
+  multiSelected,
   onSelect,
   onToggleExpand,
   provider,
@@ -51,6 +53,8 @@ function CompanyResultCard({
 }: {
   expanded: boolean;
   index: number;
+  multiSelect?: boolean;
+  multiSelected?: boolean;
   onSelect?: () => void;
   onToggleExpand: () => void;
   provider: RankedProvider & { domain: string; logo: string };
@@ -64,15 +68,22 @@ function CompanyResultCard({
   const metrics = provider.metrics ?? [];
 
   return (
-    <article className={styles.card} data-expanded={expanded} data-selected={selected}>
+    <article
+      className={styles.card}
+      data-expanded={expanded}
+      data-selected={selected}
+      data-multi-selected={multiSelected}
+    >
       <button
         type="button"
         className={styles.cardButton}
         onClick={() => {
-          if (selectable && !expanded) {
-            onSelect?.()
+          if (multiSelect) {
+            onSelect?.();
+          } else if (selectable && !expanded) {
+            onSelect?.();
           } else {
-            onToggleExpand()
+            onToggleExpand();
           }
         }}
         aria-expanded={expanded}
@@ -95,14 +106,37 @@ function CompanyResultCard({
               <span className={styles.scoreValue}>{provider.score}</span>
               <span className={styles.scoreLabel}>match</span>
             </span>
-            {selectable && (
+
+            {/* Single-select pill */}
+            {selectable && !multiSelect && (
               <span className={styles.selectionPill}>
                 {selected ? "Selected" : "Select"}
               </span>
             )}
-            <span className={styles.chevronWrap} aria-hidden="true">
-              <ChevronRight className={styles.chevron} strokeWidth={2.2} />
-            </span>
+
+            {/* Multi-select checkbox */}
+            {multiSelect && (
+              <span className={multiSelected ? styles.multiCheckSelected : styles.multiCheck}>
+                {multiSelected && (
+                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true">
+                    <path
+                      d="M1.5 4.5 L3.7 6.7 L7.5 2.5"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </span>
+            )}
+
+            {/* Chevron expand — hidden in multi-select mode */}
+            {!multiSelect && (
+              <span className={styles.chevronWrap} aria-hidden="true">
+                <ChevronRight className={styles.chevron} strokeWidth={2.2} />
+              </span>
+            )}
           </span>
         </span>
 
@@ -126,95 +160,102 @@ function CompanyResultCard({
         <span className={styles.snippet}>{snippet}</span>
       </button>
 
-      <div className={styles.expandedPanel} id={detailsId} data-open={expanded}>
-        <div className={styles.expandedContent}>
-          <div className={styles.detailBlock}>
-            <span className={styles.detailLabel}>Full preview</span>
-            <p>{provider.reasoning}</p>
-          </div>
-
-          {fields.length > 0 && (
+      {/* Expanded details — not shown in multi-select mode */}
+      {!multiSelect && (
+        <div className={styles.expandedPanel} id={detailsId} data-open={expanded}>
+          <div className={styles.expandedContent}>
             <div className={styles.detailBlock}>
-              <span className={styles.detailLabel}>Matched fields</span>
-              <div className={styles.detailChipRow}>
-                {fields.map((field) => (
-                  <span key={`${provider.url}-${field}`} className={styles.detailChip}>
-                    {field}
-                  </span>
-                ))}
+              <span className={styles.detailLabel}>Full preview</span>
+              <p>{provider.reasoning}</p>
+            </div>
+
+            {fields.length > 0 && (
+              <div className={styles.detailBlock}>
+                <span className={styles.detailLabel}>Matched fields</span>
+                <div className={styles.detailChipRow}>
+                  {fields.map((field) => (
+                    <span key={`${provider.url}-${field}`} className={styles.detailChip}>
+                      {field}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {metrics.length > 0 && (
-            <div className={styles.detailBlock}>
-              <span className={styles.detailLabel}>Fit metrics</span>
-              <div className={styles.metricDetailGrid}>
-                {metrics.map((metric) => (
-                  <span key={`${provider.url}-${metric.label}`}>
-                    <strong>{metric.label}</strong>
-                    {Math.round(metric.value * 100)}%
-                    {metric.evidence?.length ? (
-                      <small>{metric.evidence.slice(0, 4).join(", ")}</small>
-                    ) : null}
-                  </span>
-                ))}
+            {metrics.length > 0 && (
+              <div className={styles.detailBlock}>
+                <span className={styles.detailLabel}>Fit metrics</span>
+                <div className={styles.metricDetailGrid}>
+                  {metrics.map((metric) => (
+                    <span key={`${provider.url}-${metric.label}`}>
+                      <strong>{metric.label}</strong>
+                      {Math.round(metric.value * 100)}%
+                      {metric.evidence?.length ? (
+                        <small>{metric.evidence.slice(0, 4).join(", ")}</small>
+                      ) : null}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {provider.warnings?.length ? (
-            <div className={styles.detailBlock}>
-              <span className={styles.detailLabel}>Warnings</span>
-              <ul className={styles.warningList}>
-                {provider.warnings.map((item) => (
-                  <li key={`${provider.url}-${item}`}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+            {provider.warnings?.length ? (
+              <div className={styles.detailBlock}>
+                <span className={styles.detailLabel}>Warnings</span>
+                <ul className={styles.warningList}>
+                  {provider.warnings.map((item) => (
+                    <li key={`${provider.url}-${item}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
-          <div className={styles.expandedFooter}>
-            <a
-              className={styles.sourceLink}
-              href={provider.url}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open source
-              <ExternalLink size={14} strokeWidth={2} />
-            </a>
-            <button
-              type="button"
-              className={styles.collapseBtn}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleExpand();
-              }}
-            >
-              <ChevronUp size={13} strokeWidth={2.2} />
-              Collapse
-            </button>
+            <div className={styles.expandedFooter}>
+              <a
+                className={styles.sourceLink}
+                href={provider.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open source
+                <ExternalLink size={14} strokeWidth={2} />
+              </a>
+              <button
+                type="button"
+                className={styles.collapseBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleExpand();
+                }}
+              >
+                <ChevronUp size={13} strokeWidth={2.2} />
+                Collapse
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </article>
   );
 }
 
 export function ProviderListPanel({
   defaultExpandedFirst = true,
+  multiSelect = false,
   onSelect,
   providers,
   selectedIndex,
+  selectedIndices,
 }: {
-  defaultExpandedFirst?: boolean
-  onSelect?: (provider: RankedProvider, index: number) => void
-  providers: RankedProvider[]
-  selectedIndex?: number | null
+  defaultExpandedFirst?: boolean;
+  multiSelect?: boolean;
+  onSelect?: (provider: RankedProvider, index: number) => void;
+  providers: RankedProvider[];
+  selectedIndex?: number | null;
+  selectedIndices?: number[];
 }) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(
-    defaultExpandedFirst && providers.length > 0 ? 0 : null
+    !multiSelect && defaultExpandedFirst && providers.length > 0 ? 0 : null
   );
 
   const hydratedProviders = useMemo(
@@ -233,11 +274,15 @@ export function ProviderListPanel({
         {hydratedProviders.map((provider, index) => (
           <CompanyResultCard
             key={`${provider.url}-${index}`}
-            expanded={expandedIndex === index}
+            expanded={!multiSelect && expandedIndex === index}
             index={index}
+            multiSelect={multiSelect}
+            multiSelected={selectedIndices?.includes(index) ?? false}
             onSelect={() => {
-              onSelect?.(provider, index)
-              setExpandedIndex(index)
+              onSelect?.(provider, index);
+              if (!multiSelect) {
+                setExpandedIndex(index);
+              }
             }}
             onToggleExpand={() =>
               setExpandedIndex((prev) => (prev === index ? null : index))
