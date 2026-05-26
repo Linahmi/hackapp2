@@ -53,6 +53,15 @@ export type ProcurementSearchResponse = {
     exclude: string[]
     prefer: string[]
   }
+  /**
+   * DB identifiers returned by the server after persisting search results.
+   * Present only when the server successfully wrote to the database.
+   * Used by the client to reference rows when sending RFQs.
+   */
+  _db?: {
+    requestId: string
+    suppliers: Array<{ domain: string; id: string }>
+  }
   normalizedRequest: {
     budget?: {
       amount: number
