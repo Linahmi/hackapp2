@@ -59,13 +59,81 @@ function SourcesPanel({
   onClose,
   position,
   onExitComplete,
+  variant = "overlay",
 }: {
   providers: Provider[]
   visible: boolean
   onClose: () => void
   position?: { left: number; top: number } | null
   onExitComplete?: () => void
+  variant?: "inline" | "overlay"
 }) {
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Buildings size={14} weight="duotone" className="flex-shrink-0 text-primary" />
+          <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+            {providers.length} providers
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label="Close"
+        >
+          <X size={12} weight="bold" />
+        </button>
+      </div>
+
+      <div className="divide-y divide-border">
+        {providers.map((p, i) => {
+          const hostname = (() => {
+            try { return new URL(p.url).hostname.replace(/^www\./, "") }
+            catch { return p.url }
+          })()
+          return (
+            <div key={`${p.url}-${i}`} className="min-w-0 px-4 py-3">
+              <p className="mb-0.5 line-clamp-2 break-words text-sm font-medium text-foreground [overflow-wrap:anywhere]">
+                {i + 1}. {p.name}
+              </p>
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-1.5 inline-flex max-w-full min-w-0 items-start gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Globe size={10} className="mt-0.5 flex-shrink-0" />
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  {hostname} · {i + 1}
+                </span>
+              </a>
+              <p className="line-clamp-3 break-words text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+                {p.reasoning}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+
+  if (variant === "inline") {
+    if (!visible) return null
+    return (
+      <motion.aside
+        initial={{ opacity: 0, x: 12 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 8 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="sticky top-24 max-h-[calc(100vh-180px)] w-full min-w-0 max-w-full overflow-hidden overflow-y-auto rounded-2xl border border-border bg-card shadow-lg"
+      >
+        {content}
+      </motion.aside>
+    )
+  }
+
   return (
     <AnimatePresence onExitComplete={onExitComplete}>
       {visible && position && (
@@ -85,52 +153,9 @@ function SourcesPanel({
             transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
           }}
           style={{ position: "fixed", top: position.top, left: position.left }}
-          className="w-72 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-2xl border border-border bg-card shadow-lg z-50"
+          className="z-50 max-h-[calc(100vh-8rem)] w-72 overflow-hidden overflow-y-auto rounded-2xl border border-border bg-card shadow-lg"
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <div className="flex items-center gap-2">
-              <Buildings size={14} weight="duotone" className="text-primary" />
-              <span className="text-sm font-semibold text-foreground">
-                {providers.length} providers
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              aria-label="Close"
-            >
-              <X size={12} weight="bold" />
-            </button>
-          </div>
-
-          <div className="divide-y divide-border">
-            {providers.map((p, i) => {
-              const hostname = (() => {
-                try { return new URL(p.url).hostname.replace(/^www\./, "") }
-                catch { return p.url }
-              })()
-              return (
-                <div key={i} className="px-4 py-3">
-                  <p className="text-sm font-medium text-foreground mb-0.5">
-                    {i + 1}. {p.name}
-                  </p>
-                  <a
-                    href={p.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1.5"
-                  >
-                    <Globe size={10} />
-                    {hostname} · {i + 1}
-                  </a>
-                  <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-                    {p.reasoning}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
+          {content}
         </motion.aside>
       )}
     </AnimatePresence>
@@ -2750,6 +2775,7 @@ export function SearchResults({
   const SHIFT = 170
 
   useEffect(() => {
+    if (isProcurementMode) return
     if (!panelOpen || !contentRef.current) return
     const update = () => {
       const el = contentRef.current
@@ -2765,7 +2791,13 @@ export function SearchResults({
       window.removeEventListener("resize", update)
       window.removeEventListener("scroll", update)
     }
-  }, [panelOpen, sourcePanelProviders.length])
+  }, [isProcurementMode, panelOpen, sourcePanelProviders.length])
+
+  useEffect(() => {
+    if (!isProcurementMode || procurementStep === 0 || !panelVisible) return
+    setPanelOpen(false)
+    setPanelVisible(false)
+  }, [isProcurementMode, panelVisible, procurementStep])
 
   // ── Supplier actions — must be above any early return ─────────────────────────
 
@@ -2886,11 +2918,9 @@ export function SearchResults({
   const searchComplete = requestStarted && status === "ready"
 
   const showSourcesPanel = () => {
-    if (panelVisible) {
-      setPanelVisible(false)
-    } else {
-      setPanelOpen(true)
-    }
+    const nextOpen = !panelVisible
+    setPanelOpen(nextOpen)
+    setPanelVisible(nextOpen)
   }
 
   // ── Navigation logic ───────────────────────────────────────────────────────────
@@ -2946,6 +2976,8 @@ export function SearchResults({
     approvedIndices.length > 0,
   ]
   const isReviewStep = procurementStep === 2
+  const procurementSourcesOpen =
+    isProcurementMode && !isReviewStep && panelVisible && sourcePanelProviders.length > 0
 
   // ── SSR guard ──────────────────────────────────────────────────────────────────
 
@@ -2961,17 +2993,33 @@ export function SearchResults({
 
   if (isProcurementMode) {
     return (
-      <div className={cn("mx-auto w-full", isReviewStep ? "max-w-[1480px]" : "max-w-5xl")}>
+      <div
+        className={cn(
+          "mx-auto w-full",
+          isReviewStep
+            ? "max-w-[1480px]"
+            : procurementSourcesOpen
+              ? "max-w-[1320px] transition-[max-width] duration-300 ease-out"
+              : "max-w-5xl transition-[max-width] duration-300 ease-out"
+        )}
+      >
         <PhaseTimeline phases={timelinePhases} />
         <div
           className={cn(
             "min-w-0 max-w-full",
-            isReviewStep ? "w-full" : "flex w-full items-start gap-6"
+            isReviewStep
+              ? "w-full"
+              : cn(
+                  "grid w-full grid-cols-[minmax(0,1fr)] gap-y-6 xl:items-start xl:transition-[grid-template-columns,gap] xl:duration-300 xl:ease-out",
+                  procurementSourcesOpen
+                    ? "xl:grid-cols-[minmax(560px,1fr)_300px_220px] xl:gap-x-6 2xl:grid-cols-[minmax(650px,1fr)_310px_230px]"
+                    : "xl:grid-cols-[minmax(0,1fr)_0px_220px] xl:gap-x-4"
+                )
           )}
         >
           <motion.div
             ref={contentRef}
-            animate={{ x: panelOpen ? -SHIFT : 0 }}
+            animate={{ x: 0 }}
             transition={{ duration: 0.3, ease: "easeInOut" }}
             onAnimationComplete={() => {
               if (panelOpen) setPanelVisible(true)
@@ -3044,16 +3092,25 @@ export function SearchResults({
             </ProcurementWorkflowChrome>
           </motion.div>
 
+          <div
+            className={cn(
+              "min-w-0 max-w-full overflow-hidden",
+              !procurementSourcesOpen && "hidden xl:block"
+            )}
+          >
+            <SourcesPanel
+              providers={procurementSourceProviders}
+              variant="inline"
+              visible={procurementSourcesOpen}
+              onClose={() => {
+                setPanelOpen(false)
+                setPanelVisible(false)
+              }}
+            />
+          </div>
+
           {!isReviewStep && <AuditTrail events={auditEvents} />}
         </div>
-
-        <SourcesPanel
-          providers={procurementSourceProviders}
-          visible={panelVisible}
-          onClose={() => setPanelVisible(false)}
-          onExitComplete={() => setPanelOpen(false)}
-          position={panelPos}
-        />
       </div>
     )
   }
