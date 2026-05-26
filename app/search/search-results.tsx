@@ -36,7 +36,11 @@ import { ProviderListPanel, type RankedProvider } from "@/app/components/provide
 import { PhaseTimeline, type TimelinePhase } from "@/app/components/phase-timeline"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useProcurementStore } from "@/lib/stores/procurement-store"
+import { cn } from "@/lib/utils"
 import {
+  type ProcurementCompanyDetailsEvidence,
+  type ProcurementCompanyDetailsLink,
+  type ProcurementCompanyDetailsRisk,
   type ProcurementCompanyDetailsResponse,
   type ProcurementQuoteResponse,
   procurementSearchStorageKey,
@@ -742,12 +746,339 @@ function CompaniesStep({
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card p-4">
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
-      <div className="text-sm leading-relaxed text-foreground/85">{value}</div>
+      <div className="min-w-0 max-w-full text-sm leading-relaxed text-foreground/85">{value}</div>
     </div>
+  )
+}
+
+function statusLabel(status: string) {
+  return status.replaceAll("_", " ")
+}
+
+function percentLabel(value: number) {
+  return `${Math.round(value * 100)}% confidence`
+}
+
+function DetailStatusBadge({ status }: { status: string }) {
+  const positive = new Set(["available", "found", "good", "matched", "strong_fit"])
+  const inferred = new Set(["likely_available", "estimated", "possible", "partial", "possible_fit"])
+  const isPositive = positive.has(status)
+  const isInferred = inferred.has(status)
+
+  return (
+    <span
+      className="inline-flex max-w-full flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
+      style={{
+        background: isPositive || isInferred
+          ? "color-mix(in oklab, var(--p-accent), transparent 90%)"
+          : "var(--p-surface-alt)",
+        border: isPositive || isInferred
+          ? "1px solid color-mix(in oklab, var(--p-accent), transparent 72%)"
+          : "1px solid var(--p-border)",
+        color: isPositive
+          ? "color-mix(in oklab, var(--p-accent), var(--p-ink) 8%)"
+          : isInferred
+            ? "color-mix(in oklab, var(--p-accent), var(--p-muted) 28%)"
+            : "var(--p-muted)",
+      }}
+    >
+      {statusLabel(status)}
+    </span>
+  )
+}
+
+function EvidenceCard({ item }: { item: ProcurementCompanyDetailsEvidence }) {
+  const domain = getDomainLocal(item.url)
+
+  return (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-primary/30"
+    >
+      <span className="block min-w-0 max-w-full whitespace-normal break-words text-xs font-medium leading-snug text-foreground line-clamp-2 [overflow-wrap:anywhere] group-hover:text-primary">
+        {item.title || domain}
+      </span>
+      <span className="mt-1 block min-w-0 max-w-full whitespace-normal break-words text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+        {domain}
+      </span>
+      <span className="mt-1.5 block min-w-0 max-w-full whitespace-normal break-words text-[11px] leading-relaxed text-muted-foreground line-clamp-3 [overflow-wrap:anywhere]">
+        {item.snippet || item.url}
+      </span>
+      <span className="mt-2 inline-flex max-w-full items-center gap-1 text-[11px] font-medium text-primary">
+        <LinkSimple size={10} className="flex-shrink-0" />
+        <span className="min-w-0 break-words [overflow-wrap:anywhere]">Open source</span>
+      </span>
+    </a>
+  )
+}
+
+function normalizedEvidenceKey(item: ProcurementCompanyDetailsEvidence) {
+  try {
+    const url = new URL(item.url)
+    url.hash = ""
+    return url.toString().replace(/\/$/, "")
+  } catch {
+    return item.url.trim().replace(/\/$/, "")
+  }
+}
+
+function uniqueEvidenceItems(evidence: ProcurementCompanyDetailsEvidence[]) {
+  const seen = new Set<string>()
+
+  return evidence.filter((item) => {
+    const key = normalizedEvidenceKey(item)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function EvidenceList({
+  evidence,
+  initialCount = 3,
+}: {
+  evidence: ProcurementCompanyDetailsEvidence[]
+  initialCount?: number
+}) {
+  const uniqueEvidence = uniqueEvidenceItems(evidence)
+  const visibleEvidence = uniqueEvidence.slice(0, initialCount)
+  const hiddenEvidence = uniqueEvidence.slice(initialCount)
+
+  return (
+    <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+      {visibleEvidence.map((item, index) => (
+        <EvidenceCard key={`${normalizedEvidenceKey(item)}-${index}`} item={item} />
+      ))}
+      {hiddenEvidence.length > 0 && (
+        <details className="w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-dashed border-border bg-background/30 px-3 py-2">
+          <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground">
+            Show more evidence ({hiddenEvidence.length})
+          </summary>
+          <div className="mt-2 grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+            {hiddenEvidence.map((item, index) => (
+              <EvidenceCard key={`${normalizedEvidenceKey(item)}-${index + initialCount}`} item={item} />
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function EvidenceDisclosure({
+  evidence,
+}: {
+  evidence: ProcurementCompanyDetailsEvidence[]
+}) {
+  if (evidence.length === 0) return null
+
+  return (
+    <details className="mt-3 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-background/40 px-3 py-2">
+      <summary className="cursor-pointer select-none break-words text-[11px] font-medium text-muted-foreground [overflow-wrap:anywhere]">
+        Evidence ({evidence.length})
+      </summary>
+      <div className="mt-2 w-full min-w-0 max-w-full overflow-hidden">
+        <EvidenceList evidence={evidence} />
+      </div>
+    </details>
+  )
+}
+
+function DetailSection({
+  children,
+  confidence,
+  evidence,
+  label,
+  status,
+}: {
+  children: ReactNode
+  confidence: number
+  evidence: ProcurementCompanyDetailsEvidence[]
+  label: string
+  status: string
+}) {
+  return (
+    <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="min-w-0 break-words text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground [overflow-wrap:anywhere]">
+          {label}
+        </p>
+        <DetailStatusBadge status={status} />
+      </div>
+      <div className="min-w-0 max-w-full break-words text-sm leading-relaxed text-foreground/85 [overflow-wrap:anywhere]">
+        {children}
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">{percentLabel(confidence)}</p>
+      <EvidenceDisclosure evidence={evidence} />
+    </section>
+  )
+}
+
+function formatMoney(value: number | null, currency: string) {
+  if (value === null) return null
+  return `${value.toLocaleString()} ${currency}`
+}
+
+function PriceRangeSummary({
+  priceRange,
+}: {
+  priceRange: ProcurementCompanyDetailsResponse["priceRange"]
+}) {
+  const unit =
+    priceRange.unitMin !== null && priceRange.unitMax !== null
+      ? `${formatMoney(priceRange.unitMin, priceRange.currency)}–${formatMoney(priceRange.unitMax, priceRange.currency)} per unit`
+      : null
+  const total =
+    priceRange.totalMin !== null && priceRange.totalMax !== null
+      ? `${formatMoney(priceRange.totalMin, priceRange.currency)}–${formatMoney(priceRange.totalMax, priceRange.currency)} total`
+      : null
+
+  return (
+    <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+      {unit || total ? (
+        <div className="flex min-w-0 max-w-full flex-wrap gap-2">
+          {unit && <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">{unit}</span>}
+          {total && <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">{total}</span>}
+          {priceRange.quoteRequired && (
+            <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground break-words [overflow-wrap:anywhere]">
+              quote required
+            </span>
+          )}
+        </div>
+      ) : null}
+      <p>{priceRange.basis}</p>
+    </div>
+  )
+}
+
+function SpecificationSummary({
+  details,
+}: {
+  details: ProcurementCompanyDetailsResponse["matchedSpecifications"]
+}) {
+  return (
+    <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+      <p>{details.summary}</p>
+      {(details.matched.length > 0 || details.missing.length > 0) && (
+        <div className="flex min-w-0 max-w-full flex-wrap gap-2">
+          {details.matched.map((item) => (
+            <span
+              key={`matched-${item}`}
+              className="min-w-0 max-w-full rounded-full border border-primary/25 bg-primary/5 px-2.5 py-1 text-xs text-primary break-words [overflow-wrap:anywhere]"
+            >
+              {item}
+            </span>
+          ))}
+          {details.missing.map((item) => (
+            <span
+              key={`missing-${item}`}
+              className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground break-words [overflow-wrap:anywhere]"
+            >
+              Missing: {item}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BuyingLinkGroup({
+  label,
+  links,
+}: {
+  label: string
+  links: ProcurementCompanyDetailsLink[]
+}) {
+  if (links.length === 0) return null
+
+  return (
+    <div className="min-w-0 max-w-full overflow-hidden">
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <div className="flex min-w-0 max-w-full flex-wrap gap-2">
+        {links.map((link) => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-w-0 max-w-full items-start gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+          >
+            <LinkSimple size={10} className="mt-0.5 flex-shrink-0" />
+            <span className="min-w-0 max-w-full whitespace-normal break-words [overflow-wrap:anywhere]">
+              {link.title}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BuyingLinksSection({
+  links,
+}: {
+  links: ProcurementCompanyDetailsResponse["buyingLinks"]
+}) {
+  const hasLinks = Object.values(links).some((items) => items.length > 0)
+  if (!hasLinks) {
+    return (
+      <DetailItem
+        label="Buying/contact links"
+        value={<span className="text-muted-foreground">No useful supplier links were discovered.</span>}
+      />
+    )
+  }
+
+  return (
+    <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card p-4">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        Buying &amp; contact links
+      </p>
+      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden">
+        <BuyingLinkGroup label="Products" links={links.productPages} />
+        <BuyingLinkGroup label="Quotes" links={links.quotePages} />
+        <BuyingLinkGroup label="Contact" links={links.contactPages} />
+        <BuyingLinkGroup label="Catalogs" links={links.catalogPages} />
+      </div>
+    </section>
+  )
+}
+
+function RisksSection({
+  risks,
+}: {
+  risks: ProcurementCompanyDetailsRisk[]
+}) {
+  if (risks.length === 0) return null
+
+  return (
+    <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card p-4">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        Risks
+      </p>
+      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden">
+        {risks.map((risk, i) => (
+          <div key={i} className="min-w-0 max-w-full overflow-hidden">
+            <div className="mb-1 flex min-w-0 max-w-full items-center gap-2">
+              <DetailStatusBadge status={risk.severity} />
+              <span className="min-w-0 max-w-full break-words text-xs text-foreground [overflow-wrap:anywhere]">
+                {risk.message}
+              </span>
+            </div>
+            <EvidenceDisclosure evidence={risk.evidence} />
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -876,9 +1207,9 @@ function SupplierReviewCard({
 
       {/* Snippet row */}
       <div className="px-4 pb-3.5 -mt-1">
-        <div className="flex gap-3">
+        <div className="flex min-w-0 max-w-full gap-3 overflow-hidden">
           <div className="w-9 flex-shrink-0" />
-          <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--p-ink-2)" }}>
+          <p className="min-w-0 max-w-full break-words text-xs leading-relaxed line-clamp-2 [overflow-wrap:anywhere]" style={{ color: "var(--p-ink-2)" }}>
             {provider.snippet || provider.reasoning}
           </p>
         </div>
@@ -886,11 +1217,18 @@ function SupplierReviewCard({
 
       {/* Expanded detail panel */}
       {expanded && (
-        <div style={{ borderTop: "1px solid var(--p-border)" }}>
+        <div className="min-w-0 max-w-full overflow-hidden" style={{ borderTop: "1px solid var(--p-border)" }}>
           {loading && (
-            <div className="px-4 py-5 flex items-center gap-2.5 text-muted-foreground">
-              <SpinnerGap size={16} weight="bold" className="animate-spin text-primary flex-shrink-0" />
+            <div className="px-4 py-5">
+              <div className="mb-4 flex items-center gap-2.5 text-muted-foreground">
+                <SpinnerGap size={16} weight="bold" className="animate-spin text-primary flex-shrink-0" />
               <span className="text-sm">Loading supplier details…</span>
+            </div>
+              <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[repeat(2,minmax(0,1fr))]">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="h-28 rounded-2xl border border-border bg-muted/30 animate-pulse" />
+                ))}
+              </div>
             </div>
           )}
 
@@ -921,12 +1259,17 @@ function SupplierReviewCard({
                 <DetailItem label="Compliance" value={details.compliance.summary} />
               </div>
 
-              {details.matchedSpecifications.matched.length > 0 && (
-                <DetailItem
-                  label="Matched specifications"
-                  value={details.matchedSpecifications.matched.join(", ")}
-                />
-              )}
+              <DetailSection
+                confidence={details.matchedSpecifications.confidence}
+                evidence={details.matchedSpecifications.evidence}
+                label="Specifications"
+                status={details.matchedSpecifications.status}
+              >
+                <SpecificationSummary details={details.matchedSpecifications} />
+              </DetailSection>
+
+              <BuyingLinksSection links={details.buyingLinks} />
+              <RisksSection risks={details.risks} />
 
               {(() => {
                 const allLinks = [
@@ -1101,6 +1444,7 @@ function RFQSummaryPanel({
 
 function ReviewAndApproveStep({
   approvedIndices,
+  auditTrail,
   companyDetailsErrorMap,
   companyDetailsLoadingSet,
   companyDetailsMap,
@@ -1112,6 +1456,7 @@ function ReviewAndApproveStep({
   selectedIndices,
 }: {
   approvedIndices: number[]
+  auditTrail: ReactNode
   companyDetailsErrorMap: Record<number, string>
   companyDetailsLoadingSet: number[]
   companyDetailsMap: Record<number, ProcurementCompanyDetailsResponse>
@@ -1148,9 +1493,8 @@ function ReviewAndApproveStep({
         </p>
       </div>
 
-      <div className="flex gap-5 items-start">
-        {/* Supplier review cards */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3">
+      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(680px,1fr)_180px_240px] xl:items-start 2xl:grid-cols-[minmax(780px,1fr)_200px_280px]">
+        <div className="flex w-full min-w-0 max-w-none flex-col gap-3 overflow-hidden">
           {selectedIndices.map((idx) => {
             const provider = hydratedProviders[idx]
             if (!provider) return null
@@ -1170,14 +1514,17 @@ function ReviewAndApproveStep({
           })}
         </div>
 
-        {/* Sticky RFQ summary sidebar */}
-        <div className="w-44 flex-shrink-0 sticky top-24 self-start">
+        <div className="w-full min-w-0 flex-shrink-0 xl:sticky xl:top-24 xl:self-start">
           <RFQSummaryPanel
             approvedIndices={approvedIndices}
             onContinue={onContinue}
             providers={providers}
             selectedIndices={selectedIndices}
           />
+        </div>
+
+        <div className="w-full min-w-0 xl:sticky xl:top-24 xl:self-start">
+          {auditTrail}
         </div>
       </div>
     </section>
@@ -2153,6 +2500,11 @@ export function SearchResults({
     [fetchCompanyDetails]
   )
 
+  useEffect(() => {
+    if (!isProcurementMode || procurementStep !== 2) return
+    for (const index of selectedCompanyIndices) fetchCompanyDetails(index)
+  }, [fetchCompanyDetails, isProcurementMode, procurementStep, selectedCompanyIndices])
+
   // ── Quote generation: triggered when entering step 3 ─────────────────────────
 
   // Use a stable string key for the dep array to avoid re-running for same set
@@ -2166,13 +2518,20 @@ export function SearchResults({
     if (!procurementPayload || !procurementResponse) return
 
     for (const index of approvedIndices) {
+      const details = companyDetailsMap[index] ?? null
+      const detailsLoading = companyDetailsLoadingSet.includes(index)
+      const detailsError = companyDetailsErrorMap[index]
+
+      if (!details && !detailsLoading && !detailsError) {
+        fetchCompanyDetails(index)
+        continue
+      }
+
       if (quotationStartedRef.current.has(index)) continue
       quotationStartedRef.current.add(index)
 
       const company = procurementResponse.results[index]
       if (!company) continue
-
-      const details = companyDetailsMap[index] ?? null
 
       setQuotationsLoadingSet((prev) => [...prev, index])
       setQuotationsErrorMap((prev) => {
@@ -2215,8 +2574,17 @@ export function SearchResults({
           setQuotationsLoadingSet((prev) => prev.filter((i) => i !== index))
         })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isProcurementMode, procurementStep, approvedIndicesKey, procurementPayload, procurementResponse])
+  }, [
+    approvedIndicesKey,
+    companyDetailsErrorMap,
+    companyDetailsLoadingSet,
+    companyDetailsMap,
+    fetchCompanyDetails,
+    isProcurementMode,
+    procurementPayload,
+    procurementResponse,
+    procurementStep,
+  ])
 
   // ── Chat: auto-send on fresh chat ─────────────────────────────────────────────
 
@@ -2577,6 +2945,7 @@ export function SearchResults({
     selectedCompanyIndices.length > 0,
     approvedIndices.length > 0,
   ]
+  const isReviewStep = procurementStep === 2
 
   // ── SSR guard ──────────────────────────────────────────────────────────────────
 
@@ -2592,9 +2961,14 @@ export function SearchResults({
 
   if (isProcurementMode) {
     return (
-      <>
+      <div className={cn("mx-auto w-full", isReviewStep ? "max-w-[1480px]" : "max-w-5xl")}>
         <PhaseTimeline phases={timelinePhases} />
-        <div className="flex gap-6 items-start">
+        <div
+          className={cn(
+            "min-w-0 max-w-full",
+            isReviewStep ? "w-full" : "flex w-full items-start gap-6"
+          )}
+        >
           <motion.div
             ref={contentRef}
             animate={{ x: panelOpen ? -SHIFT : 0 }}
@@ -2602,7 +2976,7 @@ export function SearchResults({
             onAnimationComplete={() => {
               if (panelOpen) setPanelVisible(true)
             }}
-            className="flex-1 min-w-0 flex flex-col gap-8"
+            className="flex min-w-0 max-w-full flex-1 flex-col gap-8"
           >
             <ProcurementWorkflowChrome
               currentStep={procurementStep}
@@ -2637,6 +3011,7 @@ export function SearchResults({
               {procurementStep === 2 && (
                 <ReviewAndApproveStep
                   approvedIndices={approvedIndices}
+                  auditTrail={<AuditTrail events={auditEvents} />}
                   companyDetailsErrorMap={companyDetailsErrorMap}
                   companyDetailsLoadingSet={companyDetailsLoadingSet}
                   companyDetailsMap={companyDetailsMap}
@@ -2669,7 +3044,7 @@ export function SearchResults({
             </ProcurementWorkflowChrome>
           </motion.div>
 
-          <AuditTrail events={auditEvents} />
+          {!isReviewStep && <AuditTrail events={auditEvents} />}
         </div>
 
         <SourcesPanel
@@ -2679,7 +3054,7 @@ export function SearchResults({
           onExitComplete={() => setPanelOpen(false)}
           position={panelPos}
         />
-      </>
+      </div>
     )
   }
 
