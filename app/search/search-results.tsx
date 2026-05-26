@@ -1247,8 +1247,8 @@ function SupplierReviewCard({
             <div className="px-4 py-5">
               <div className="mb-4 flex items-center gap-2.5 text-muted-foreground">
                 <SpinnerGap size={16} weight="bold" className="animate-spin text-primary flex-shrink-0" />
-              <span className="text-sm">Loading supplier details…</span>
-            </div>
+                <span className="text-sm">Fetching supplier evidence…</span>
+              </div>
               <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[repeat(2,minmax(0,1fr))]">
                 {Array.from({ length: 4 }).map((_, index) => (
                   <div key={index} className="h-28 rounded-2xl border border-border bg-muted/30 animate-pulse" />
@@ -1265,29 +1265,73 @@ function SupplierReviewCard({
           )}
 
           {details && !loading && (
-            <div className="p-4 grid gap-3">
-              <div className="grid grid-cols-2 gap-3">
-                <DetailItem label="Availability" value={details.availability.summary} />
-                <DetailItem
+            <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden p-4">
+              <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden lg:grid-cols-[repeat(2,minmax(0,1fr))]">
+                <DetailSection
+                  confidence={details.availability.confidence}
+                  evidence={details.availability.evidence}
+                  label="Availability"
+                  status={details.availability.status}
+                >
+                  {details.availability.summary}
+                </DetailSection>
+
+                <DetailSection
+                  confidence={details.priceRange.confidence}
+                  evidence={details.priceRange.evidence}
                   label="Price range"
-                  value={
-                    details.priceRange.quoteRequired
-                      ? "Quote required"
-                      : details.priceRange.status === "found" && details.priceRange.unitMin !== null
-                      ? `${details.priceRange.unitMin}–${details.priceRange.unitMax ?? "?"} ${details.priceRange.currency}/unit`
-                      : details.priceRange.status === "estimated"
-                      ? `Est. (${details.priceRange.basis})`
-                      : "Not available"
-                  }
-                />
-                <DetailItem label="Delivery fit" value={details.deliveryFit.summary} />
-                <DetailItem label="Compliance" value={details.compliance.summary} />
+                  status={details.priceRange.status}
+                >
+                  <PriceRangeSummary priceRange={details.priceRange} />
+                </DetailSection>
+
+                <DetailSection
+                  confidence={details.deliveryFit.confidence}
+                  evidence={details.deliveryFit.evidence}
+                  label="Delivery fit"
+                  status={details.deliveryFit.status}
+                >
+                  <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+                    <p>{details.deliveryFit.summary}</p>
+                    <div className="flex min-w-0 max-w-full flex-wrap gap-2">
+                      <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">
+                        Location {details.deliveryFit.locationFit ? "matched" : "uncertain"}
+                      </span>
+                      <span className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs break-words [overflow-wrap:anywhere]">
+                        Deadline {details.deliveryFit.deadlineFit}
+                      </span>
+                    </div>
+                  </div>
+                </DetailSection>
+
+                <DetailSection
+                  confidence={details.compliance.confidence}
+                  evidence={details.compliance.evidence}
+                  label="Compliance"
+                  status={details.compliance.status}
+                >
+                  <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+                    <p>{details.compliance.summary}</p>
+                    {details.compliance.certifications.length > 0 && (
+                      <div className="flex min-w-0 max-w-full flex-wrap gap-2">
+                        {details.compliance.certifications.map((certification) => (
+                          <span
+                            key={certification}
+                            className="min-w-0 max-w-full rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground break-words [overflow-wrap:anywhere]"
+                          >
+                            {certification}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </DetailSection>
               </div>
 
               <DetailSection
                 confidence={details.matchedSpecifications.confidence}
                 evidence={details.matchedSpecifications.evidence}
-                label="Specifications"
+                label="Matched specifications"
                 status={details.matchedSpecifications.status}
               >
                 <SpecificationSummary details={details.matchedSpecifications} />
@@ -1296,56 +1340,14 @@ function SupplierReviewCard({
               <BuyingLinksSection links={details.buyingLinks} />
               <RisksSection risks={details.risks} />
 
-              {(() => {
-                const allLinks = [
-                  ...details.buyingLinks.productPages.map((l) => ({ url: l.url, label: "Product" })),
-                  ...details.buyingLinks.quotePages.map((l) => ({ url: l.url, label: "Quote" })),
-                  ...details.buyingLinks.contactPages.map((l) => ({ url: l.url, label: "Contact" })),
-                  ...details.buyingLinks.catalogPages.map((l) => ({ url: l.url, label: "Catalog" })),
-                ]
-                const hasContent = details.risks.length > 0 || allLinks.length > 0
-                if (!hasContent) return null
-                return (
-                  <details className="rounded-xl border border-border bg-card p-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-foreground select-none">
-                      Risks &amp; useful links
-                    </summary>
-                    <div className="mt-3 grid gap-3">
-                      {details.risks.length > 0 && (
-                        <div>
-                          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                            Possible risks
-                          </p>
-                          <ul className="grid gap-0.5 pl-4 text-xs text-muted-foreground">
-                            {details.risks.map((r, i) => <li key={i}>{r.message}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                      {allLinks.length > 0 && (
-                        <div>
-                          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                            Links
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {allLinks.map((link, i) => (
-                              <a
-                                key={`${link.url}-${i}`}
-                                href={link.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
-                              >
-                                <LinkSimple size={10} />
-                                {link.label}
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                )
-              })()}
+              <DetailSection
+                confidence={details.overallRecommendation.confidence}
+                evidence={[]}
+                label="Overall recommendation"
+                status={details.overallRecommendation.status}
+              >
+                {details.overallRecommendation.summary}
+              </DetailSection>
             </div>
           )}
 
