@@ -1469,7 +1469,6 @@ function RFQSummaryPanel({
 
 function ReviewAndApproveStep({
   approvedIndices,
-  auditTrail,
   companyDetailsErrorMap,
   companyDetailsLoadingSet,
   companyDetailsMap,
@@ -1481,7 +1480,6 @@ function ReviewAndApproveStep({
   selectedIndices,
 }: {
   approvedIndices: number[]
-  auditTrail: ReactNode
   companyDetailsErrorMap: Record<number, string>
   companyDetailsLoadingSet: number[]
   companyDetailsMap: Record<number, ProcurementCompanyDetailsResponse>
@@ -1518,7 +1516,7 @@ function ReviewAndApproveStep({
         </p>
       </div>
 
-      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(680px,1fr)_180px_240px] xl:items-start 2xl:grid-cols-[minmax(780px,1fr)_200px_280px]">
+      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_170px] lg:items-start">
         <div className="flex w-full min-w-0 max-w-none flex-col gap-3 overflow-hidden">
           {selectedIndices.map((idx) => {
             const provider = hydratedProviders[idx]
@@ -1548,9 +1546,6 @@ function ReviewAndApproveStep({
           />
         </div>
 
-        <div className="w-full min-w-0 xl:sticky xl:top-24 xl:self-start">
-          {auditTrail}
-        </div>
       </div>
     </section>
   )
@@ -2996,25 +2991,19 @@ export function SearchResults({
       <div
         className={cn(
           "mx-auto w-full",
-          isReviewStep
-            ? "max-w-[1480px]"
-            : procurementSourcesOpen
-              ? "max-w-[1320px] transition-[max-width] duration-300 ease-out"
-              : "max-w-5xl transition-[max-width] duration-300 ease-out"
+          procurementSourcesOpen
+            ? "max-w-[1320px] transition-[max-width] duration-300 ease-out"
+            : "max-w-5xl transition-[max-width] duration-300 ease-out"
         )}
       >
         <PhaseTimeline phases={timelinePhases} />
         <div
           className={cn(
             "min-w-0 max-w-full",
-            isReviewStep
-              ? "w-full"
-              : cn(
-                  "grid w-full grid-cols-[minmax(0,1fr)] gap-y-6 xl:items-start xl:transition-[grid-template-columns,gap] xl:duration-300 xl:ease-out",
-                  procurementSourcesOpen
-                    ? "xl:grid-cols-[minmax(560px,1fr)_300px_220px] xl:gap-x-6 2xl:grid-cols-[minmax(650px,1fr)_310px_230px]"
-                    : "xl:grid-cols-[minmax(0,1fr)_0px_220px] xl:gap-x-4"
-                )
+            "grid w-full grid-cols-[minmax(0,1fr)] gap-y-6 xl:items-start xl:transition-[grid-template-columns,gap] xl:duration-300 xl:ease-out",
+            procurementSourcesOpen
+              ? "xl:grid-cols-[minmax(560px,1fr)_300px_220px] xl:gap-x-6 2xl:grid-cols-[minmax(650px,1fr)_310px_230px]"
+              : "xl:grid-cols-[minmax(0,1fr)_0px_220px] xl:gap-x-4"
           )}
         >
           <motion.div
@@ -3059,7 +3048,6 @@ export function SearchResults({
               {procurementStep === 2 && (
                 <ReviewAndApproveStep
                   approvedIndices={approvedIndices}
-                  auditTrail={<AuditTrail events={auditEvents} />}
                   companyDetailsErrorMap={companyDetailsErrorMap}
                   companyDetailsLoadingSet={companyDetailsLoadingSet}
                   companyDetailsMap={companyDetailsMap}
@@ -3109,7 +3097,7 @@ export function SearchResults({
             />
           </div>
 
-          {!isReviewStep && <AuditTrail events={auditEvents} />}
+          <AuditTrail events={auditEvents} />
         </div>
       </div>
     )
