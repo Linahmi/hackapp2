@@ -513,6 +513,36 @@ export const auditEventRelations = relations(auditEvent, ({ one }) => ({
  * One row per user — stores their sender identity used in outbound RFQ emails.
  * Upserted on save (userId is unique).
  */
+/**
+ * In-app notifications for buyers.
+ * Append-only — never delete rows, just set readAt.
+ */
+export const notification = pgTable(
+  "notification",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    payload: jsonb("payload").notNull().default({}),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("notification_user_id_idx").on(t.userId),
+    index("notification_read_at_idx").on(t.readAt),
+    index("notification_created_at_idx").on(t.createdAt),
+  ],
+);
+
+export const notificationRelations = relations(notification, ({ one }) => ({
+  user: one(user, {
+    fields: [notification.userId],
+    references: [user.id],
+  }),
+}));
+
 export const companySettings = pgTable("company_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id")
@@ -570,6 +600,9 @@ export type NewAuditEvent = typeof auditEvent.$inferInsert;
 export type CompanySettings = typeof companySettings.$inferSelect;
 export type NewCompanySettings = typeof companySettings.$inferInsert;
 
+export type Notification = typeof notification.$inferSelect;
+export type NewNotification = typeof notification.$inferInsert;
+
 // Enum value unions (use these in application code instead of raw strings)
 export type RequestStatus = (typeof requestStatus.enumValues)[number];
 export type CampaignStatus = (typeof campaignStatus.enumValues)[number];
@@ -604,6 +637,7 @@ export const AUDIT_EVENT_TYPES = {
   SUPPLIER_RESPONSE_PAGE_OPENED: "supplier_response_page_opened",
   QUOTATION_SUBMITTED: "quotation_submitted",
   RFQ_MESSAGE_REPLIED: "rfq_message_replied",
+  COMPANY_SETTINGS_UPDATED: "company_settings_updated",
 } as const;
 
 export type AuditEventType =

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { auth } from "@/lib/auth";
-import { getCompanySettings, upsertCompanySettings } from "@/db/queries";
+import { AUDIT_EVENT_TYPES, getCompanySettings, logAuditEvent, upsertCompanySettings } from "@/db/queries";
 
 const updateSchema = z
   .object({
@@ -9,7 +9,13 @@ const updateSchema = z
     senderName: z.string().trim().max(200).nullable().optional(),
     senderRole: z.string().trim().max(200).nullable().optional(),
     senderEmail: z.string().trim().email().nullable().optional(),
-    logoUrl: z.string().trim().url().nullable().optional(),
+    logoUrl: z
+      .string()
+      .trim()
+      .url()
+      .refine((v) => v.startsWith("https://"), "Logo URL must use HTTPS")
+      .nullable()
+      .optional(),
     signature: z.string().trim().max(2000).nullable().optional(),
   })
   .strict();
@@ -42,5 +48,15 @@ export async function POST(request: Request) {
   }
 
   const settings = await upsertCompanySettings(session.user.id, parsed.data);
+
+  const updatedFields = Object.entries(parsed.data)
+    .filter(([, v]) => v !== undefined)
+    .map(([k]) => k);
+  await logAuditEvent({
+    type: AUDIT_EVENT_TYPES.COMPANY_SETTINGS_UPDATED,
+    message: `Company settings updated by ${session.user.email ?? session.user.id}`,
+    metadata: { fields: updatedFields, userId: session.user.id },
+  });
+
   return Response.json(settings);
 }
