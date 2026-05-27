@@ -133,7 +133,7 @@ export async function sendProcurementRfqCampaign(input: {
   );
 
   await updateCampaignStatus(campaign.id, "SENDING", new Date());
-  await updateRequestStatus(requestId, "SENT");
+  await updateRequestStatus(requestId, "RFQ_SENT");
 
   await logAuditEvent({
     requestId,

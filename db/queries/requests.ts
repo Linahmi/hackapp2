@@ -5,7 +5,7 @@
  * Business logic (status transitions, audit logging) lives in lib/services/.
  */
 
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "../index";
 import {
@@ -79,6 +79,22 @@ export async function updateRequestStatus(id: string, status: RequestStatus) {
     .returning();
   if (!row) throw new Error(`Request ${id} not found`);
   return row;
+}
+
+/**
+ * Advance request status only when currently in one of the allowed states.
+ * Idempotent — silently skips if already past the target status.
+ */
+export async function advanceRequestStatus(
+  id: string,
+  newStatus: RequestStatus,
+  allowedFrom: RequestStatus[],
+): Promise<void> {
+  if (allowedFrom.length === 0) return;
+  await db
+    .update(procurementRequest)
+    .set({ status: newStatus })
+    .where(and(eq(procurementRequest.id, id), inArray(procurementRequest.status, allowedFrom)));
 }
 
 export async function updateRequestStructuredData(

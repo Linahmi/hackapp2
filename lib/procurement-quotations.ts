@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   AUDIT_EVENT_TYPES,
+  advanceRequestStatus,
   createNotification,
   getActiveSupplierResponseTokenByHash,
   getCompanySettings,
@@ -242,6 +243,13 @@ export async function submitSupplierQuotation(
   const buyerUserId = context.rfqMessage.campaign.request.userId;
 
   await Promise.all([
+    // Advance request status to QUOTES_RECEIVED on the first quotation
+    advanceRequestStatus(
+      context.rfqMessage.campaign.requestId,
+      "QUOTES_RECEIVED",
+      ["DRAFT", "SEARCHING", "MATCHED", "READY", "SENT", "RFQ_SENT"],
+    ).catch((err) => console.error("[status] Failed to advance to QUOTES_RECEIVED", err)),
+
     // Notify the request creator (request.userId) that a supplier replied.
     // Scoped to the individual who created the request, not the whole company.
     // When multi-user companies are added, extend this to notify all company members.

@@ -56,6 +56,11 @@ export const requestStatus = pgEnum("request_status", [
   "MATCHED",
   "READY",
   "SENT",
+  "RFQ_SENT",
+  "QUOTES_RECEIVED",
+  "UNDER_REVIEW",
+  "SUPPLIER_SELECTED",
+  "APPROVED",
   "COMPLETED",
   "CANCELLED",
 ]);

@@ -4,8 +4,10 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import {
   AUDIT_EVENT_TYPES,
+  advanceRequestStatus,
   createApprovals,
   createNotification,
+  getCompanySettings,
   getRequestById,
   getRequiredApprovers,
   logAuditEvent,
@@ -170,6 +172,11 @@ export async function POST(
     },
   });
 
+  // Advance request status to SUPPLIER_SELECTED
+  await advanceRequestStatus(requestId, "SUPPLIER_SELECTED", [
+    "DRAFT", "SEARCHING", "MATCHED", "READY", "SENT", "RFQ_SENT", "QUOTES_RECEIVED", "UNDER_REVIEW",
+  ]).catch((err) => console.error("[status] Failed to advance to SUPPLIER_SELECTED", err));
+
   // ── Approval workflow ──────────────────────────────────────────────────────
   // Find approvers whose threshold is exceeded by this quotation's total price.
   const requiredApprovers = await getRequiredApprovers(
@@ -192,14 +199,25 @@ export async function POST(
       metadata: { selectionId: selectionId.id },
     });
 
+    // Also advance request to APPROVED when auto-approved
+    await advanceRequestStatus(requestId, "APPROVED", ["SUPPLIER_SELECTED"])
+      .catch((err) => console.error("[status] Failed to advance to APPROVED", err));
+
     return Response.json({ ok: true, selectionId: selectionId.id, requiresApproval: false });
   }
 
   // Create approval records and notify each approver
   await createApprovals(selectionId.id, requiredApprovers.map((a) => a.approverUserId));
 
+  // Fetch buyer's company settings for branded email identity
+  const companySettings = await getCompanySettings(session.user.id).catch(() => null);
   const buyerName = session.user.name ?? session.user.email ?? "A buyer";
-  const appUrl = env.NEXT_PUBLIC_APP_URL ?? "";
+  const fromName = [companySettings?.senderName, companySettings?.companyName]
+    .filter(Boolean)
+    .join(" — ") || buyerName;
+  const fromAddress = env.MAILGUN_DOMAIN ? `noreply@${env.MAILGUN_DOMAIN}` : undefined;
+  const emailFrom = fromAddress ? `${fromName} <${fromAddress}>` : undefined;
+  const approvalsUrl = `${(env.NEXT_PUBLIC_APP_URL ?? env.BETTER_AUTH_URL).replace(/\/$/, "")}/approvals`;
 
   await Promise.all(
     requiredApprovers.flatMap((a) => [
@@ -218,6 +236,8 @@ export async function POST(
       }).catch((err) => console.error("[notification] Failed to notify approver", err)),
 
       sendRfqEmail({
+        from: emailFrom,
+        replyTo: companySettings?.senderEmail ?? undefined,
         to: a.approverUser.email,
         subject: `Approval requested — ${quotationRow.supplier.name} (${Number(quotationRow.totalPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quotationRow.currency})`,
         text: [
@@ -228,9 +248,9 @@ export async function POST(
           `Amount: ${Number(quotationRow.totalPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quotationRow.currency}`,
           ``,
           `Review and approve or reject this selection at:`,
-          `${appUrl}/approvals`,
+          approvalsUrl,
           ``,
-          `— Procora`,
+          `— ${fromName}`,
         ].join("\n"),
       }).then((result) => {
         if (!result.ok) console.error("[email] Failed to email approver:", result.error);

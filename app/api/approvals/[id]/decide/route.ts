@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import {
   AUDIT_EVENT_TYPES,
+  advanceRequestStatus,
   createNotification,
   decideApproval,
   getApprovalById,
@@ -51,7 +52,7 @@ export async function POST(
   await decideApproval(id, session.user.id, parsed.data.decision, parsed.data.comment ?? null);
   await resolveSelectionStatus(existing.selectionId);
 
-  // Load the selection for audit + buyer notification
+  // Load the selection (after resolve) to check final status + get context for audit/notification
   const sel = await db.query.supplierSelection.findFirst({
     where: eq(supplierSelection.id, existing.selectionId),
     with: {
@@ -59,6 +60,12 @@ export async function POST(
       quotation: { with: { supplier: { columns: { name: true } } }, columns: { totalPrice: true, currency: true } },
     },
   });
+
+  // Advance procurementRequest status when the selection is fully approved
+  if (sel?.status === "APPROVED" && sel.requestId) {
+    advanceRequestStatus(sel.requestId, "APPROVED", ["SUPPLIER_SELECTED"])
+      .catch((err) => console.error("[status] Failed to advance request to APPROVED", err));
+  }
 
   await logAuditEvent({
     requestId: sel?.requestId,
