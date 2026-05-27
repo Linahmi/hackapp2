@@ -4,7 +4,15 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { authClient } from "@/lib/auth-client"
 import { ProcuraTopBar } from "@/app/components/procura-topbar"
-import { Buildings, Envelope, IdentificationCard, Link, PencilSimple, User } from "phosphor-react"
+import { Buildings, Envelope, IdentificationCard, Link, PencilSimple, Trash, User, UserPlus, UsersThree } from "phosphor-react"
+
+type ApproverItem = {
+  id: string
+  approverUserId: string
+  thresholdAmount: string | null
+  thresholdCurrency: string | null
+  approverUser: { id: string; name: string; email: string }
+}
 
 type Settings = {
   companyName?: string | null
@@ -33,6 +41,14 @@ export default function CompanySettingsPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Approvers state
+  const [approvers, setApprovers] = useState<ApproverItem[]>([])
+  const [approverEmail, setApproverEmail] = useState("")
+  const [approverThreshold, setApproverThreshold] = useState("")
+  const [approverCurrency, setApproverCurrency] = useState("CHF")
+  const [addingApprover, setAddingApprover] = useState(false)
+  const [approverError, setApproverError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!isPending && !session) router.push("/sign-in")
   }, [isPending, session, router])
@@ -54,6 +70,45 @@ export default function CompanySettingsPage() {
       .catch(() => setError("Could not load settings."))
       .finally(() => setLoading(false))
   }, [session])
+
+  useEffect(() => {
+    if (!session) return
+    fetch("/api/approvers")
+      .then((r) => r.json())
+      .then((data: { approvers: ApproverItem[] }) => setApprovers(data.approvers ?? []))
+      .catch(() => {})
+  }, [session])
+
+  async function handleAddApprover(e: React.FormEvent) {
+    e.preventDefault()
+    setApproverError(null)
+    setAddingApprover(true)
+    try {
+      const res = await fetch("/api/approvers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: approverEmail.trim(),
+          thresholdAmount: approverThreshold ? Number(approverThreshold) : null,
+          thresholdCurrency: approverThreshold ? approverCurrency : null,
+        }),
+      })
+      const data = (await res.json()) as { approver?: ApproverItem; error?: string }
+      if (!res.ok) throw new Error(data.error ?? "Failed to add approver")
+      if (data.approver) setApprovers((prev) => [...prev, data.approver!])
+      setApproverEmail("")
+      setApproverThreshold("")
+    } catch (e) {
+      setApproverError(e instanceof Error ? e.message : "Failed to add approver")
+    } finally {
+      setAddingApprover(false)
+    }
+  }
+
+  async function handleRemoveApprover(id: string) {
+    const res = await fetch(`/api/approvers/${id}`, { method: "DELETE" })
+    if (res.ok) setApprovers((prev) => prev.filter((a) => a.id !== id))
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -216,6 +271,121 @@ export default function CompanySettingsPage() {
             )}
           </div>
         </form>
+
+        {/* ── Approvers ─────────────────────────────────────────────────────── */}
+        <div className="mt-8">
+          <Section icon={<UsersThree size={15} weight="duotone" />} title="Approval workflow">
+            <p className="text-[12px] leading-relaxed" style={{ color: "var(--p-ink-2)" }}>
+              Add approvers who must review supplier selections above a certain amount.
+              Leave threshold empty to require approval on every selection.
+            </p>
+
+            {/* Existing approvers */}
+            {approvers.length > 0 && (
+              <div className="flex flex-col gap-2 mt-1">
+                {approvers.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5"
+                    style={{ background: "var(--p-surface-alt)", border: "1px solid var(--p-border)" }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-medium truncate" style={{ color: "var(--p-ink)" }}>
+                        {a.approverUser.name}
+                      </p>
+                      <p className="text-[11px] truncate" style={{ color: "var(--p-muted)" }}>
+                        {a.approverUser.email}
+                        {a.thresholdAmount
+                          ? ` · above ${Number(a.thresholdAmount).toLocaleString()} ${a.thresholdCurrency ?? ""}`
+                          : " · always required"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveApprover(a.id)}
+                      className="flex-shrink-0 transition-opacity hover:opacity-70"
+                      style={{ color: "var(--p-muted)" }}
+                      aria-label="Remove approver"
+                    >
+                      <Trash size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add approver form */}
+            <form onSubmit={handleAddApprover} className="flex flex-col gap-3 mt-1">
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <input
+                  type="email"
+                  placeholder="approver@company.com"
+                  value={approverEmail}
+                  onChange={(e) => setApproverEmail(e.target.value)}
+                  required
+                  className="rounded-lg py-2.5 px-3 text-sm focus:outline-none focus:ring-2"
+                  style={{
+                    background: "var(--p-surface-alt)",
+                    border: "1px solid var(--p-border)",
+                    color: "var(--p-ink)",
+                    // @ts-expect-error css custom property
+                    "--tw-ring-color": "var(--p-accent)",
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={addingApprover || !approverEmail}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-[12px] font-semibold text-white transition-opacity disabled:opacity-40"
+                  style={{ background: "var(--p-accent)" }}
+                >
+                  <UserPlus size={13} />
+                  {addingApprover ? "Adding…" : "Add"}
+                </button>
+              </div>
+
+              {/* Optional threshold */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="Threshold amount (optional)"
+                  value={approverThreshold}
+                  onChange={(e) => setApproverThreshold(e.target.value)}
+                  className="flex-1 rounded-lg py-2 px-3 text-[12px] focus:outline-none focus:ring-2"
+                  style={{
+                    background: "var(--p-surface-alt)",
+                    border: "1px solid var(--p-border)",
+                    color: "var(--p-ink)",
+                    // @ts-expect-error css custom property
+                    "--tw-ring-color": "var(--p-accent)",
+                  }}
+                />
+                <select
+                  value={approverCurrency}
+                  onChange={(e) => setApproverCurrency(e.target.value)}
+                  disabled={!approverThreshold}
+                  className="rounded-lg py-2 px-2 text-[12px] focus:outline-none"
+                  style={{
+                    background: "var(--p-surface-alt)",
+                    border: "1px solid var(--p-border)",
+                    color: approverThreshold ? "var(--p-ink)" : "var(--p-muted)",
+                  }}
+                >
+                  {["CHF", "EUR", "USD", "GBP"].map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {approverError && (
+                <p className="text-[11px]" style={{ color: "var(--p-rose)" }}>{approverError}</p>
+              )}
+              <p className="text-[11px]" style={{ color: "var(--p-muted)" }}>
+                The approver must already have a Procora account.
+              </p>
+            </form>
+          </Section>
+        </div>
       </main>
     </div>
   )

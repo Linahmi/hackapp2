@@ -135,6 +135,15 @@ export const selectionStatus = pgEnum("selection_status", [
   "REJECTED",
 ]);
 
+/**
+ * Individual approver decision on a selection.
+ */
+export const approvalDecision = pgEnum("approval_decision", [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+]);
+
 // ─────────────────────────────────────────────────────────────
 // Tables
 // ─────────────────────────────────────────────────────────────
@@ -623,6 +632,80 @@ export const supplierSelectionRelations = relations(supplierSelection, ({ one })
   }),
 }));
 
+/**
+ * Configured approvers for a buyer.
+ * ownerId = the buyer who set this up.
+ * approverUserId = the user who will approve.
+ * thresholdAmount / thresholdCurrency = only trigger approval above this amount.
+ * Null threshold = always require approval regardless of amount.
+ */
+export const approver = pgTable(
+  "approver",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    approverUserId: text("approver_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    thresholdAmount: numeric("threshold_amount", { precision: 12, scale: 2 }),
+    thresholdCurrency: text("threshold_currency"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("approver_owner_id_idx").on(t.ownerId),
+    index("approver_approver_user_id_idx").on(t.approverUserId),
+    uniqueIndex("approver_owner_approver_unique_idx").on(t.ownerId, t.approverUserId),
+  ],
+);
+
+export const approverRelations = relations(approver, ({ one }) => ({
+  owner: one(user, { fields: [approver.ownerId], references: [user.id], relationName: "owner" }),
+  approverUser: one(user, {
+    fields: [approver.approverUserId],
+    references: [user.id],
+    relationName: "approverUser",
+  }),
+}));
+
+/**
+ * Individual approval record — one row per (selection, approver) pair.
+ * decision starts as PENDING, updated when the approver acts.
+ */
+export const approval = pgTable(
+  "approval",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    selectionId: uuid("selection_id")
+      .notNull()
+      .references(() => supplierSelection.id, { onDelete: "cascade" }),
+    approverId: text("approver_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    decision: approvalDecision("decision").notNull().default("PENDING"),
+    comment: text("comment"),
+    decidedAt: timestamp("decided_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("approval_selection_id_idx").on(t.selectionId),
+    index("approval_approver_id_idx").on(t.approverId),
+    index("approval_decision_idx").on(t.decision),
+  ],
+);
+
+export const approvalRelations = relations(approval, ({ one }) => ({
+  selection: one(supplierSelection, {
+    fields: [approval.selectionId],
+    references: [supplierSelection.id],
+  }),
+  approver: one(user, {
+    fields: [approval.approverId],
+    references: [user.id],
+  }),
+}));
+
 // ─────────────────────────────────────────────────────────────
 // Type exports
 // ─────────────────────────────────────────────────────────────
@@ -661,6 +744,13 @@ export type SupplierSelection = typeof supplierSelection.$inferSelect;
 export type NewSupplierSelection = typeof supplierSelection.$inferInsert;
 export type SelectionStatus = (typeof selectionStatus.enumValues)[number];
 
+export type Approver = typeof approver.$inferSelect;
+export type NewApprover = typeof approver.$inferInsert;
+
+export type Approval = typeof approval.$inferSelect;
+export type NewApproval = typeof approval.$inferInsert;
+export type ApprovalDecision = (typeof approvalDecision.enumValues)[number];
+
 // Enum value unions (use these in application code instead of raw strings)
 export type RequestStatus = (typeof requestStatus.enumValues)[number];
 export type CampaignStatus = (typeof campaignStatus.enumValues)[number];
@@ -696,6 +786,9 @@ export const AUDIT_EVENT_TYPES = {
   QUOTATION_SUBMITTED: "quotation_submitted",
   RFQ_MESSAGE_REPLIED: "rfq_message_replied",
   COMPANY_SETTINGS_UPDATED: "company_settings_updated",
+  SELECTION_SUBMITTED_FOR_APPROVAL: "selection_submitted_for_approval",
+  SELECTION_AUTO_APPROVED: "selection_auto_approved",
+  APPROVAL_DECIDED: "approval_decided",
 } as const;
 
 export type AuditEventType =

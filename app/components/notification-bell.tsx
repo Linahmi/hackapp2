@@ -9,8 +9,13 @@ type NotificationPayload = {
   requestTitle?: string
   requestId?: string
   quotationId?: string
+  selectionId?: string
   totalPrice?: string
   currency?: string
+  approverName?: string
+  comment?: string | null
+  decision?: string
+  submittedBy?: string
 }
 
 type NotificationItem = {
@@ -78,7 +83,28 @@ export function NotificationBell() {
     fetch("/api/notifications", { method: "DELETE" }).catch(() => {})
   }
 
-  function markRead(id: string, requestId?: string) {
+  function notificationLink(n: NotificationItem): string | undefined {
+    if (n.type === "APPROVAL_REQUESTED") return "/approvals"
+    if (n.type === "SELECTION_APPROVED" || n.type === "SELECTION_REJECTED") {
+      return n.payload.requestId ? `/requests/${n.payload.requestId}/compare` : undefined
+    }
+    return n.payload.requestId ? `/search/${n.payload.requestId}` : undefined
+  }
+
+  function notificationTitle(n: NotificationItem): string {
+    if (n.type === "APPROVAL_REQUESTED") {
+      return `Approval requested — ${n.payload.supplierName ?? "a supplier"}`
+    }
+    if (n.type === "SELECTION_APPROVED") {
+      return `Selection approved by ${n.payload.approverName ?? "an approver"}`
+    }
+    if (n.type === "SELECTION_REJECTED") {
+      return `Selection rejected by ${n.payload.approverName ?? "an approver"}`
+    }
+    return `${n.payload.supplierName ?? "A supplier"} submitted a quotation`
+  }
+
+  function markRead(id: string, href?: string) {
     // Optimistic: remove from list immediately so badge refreshes instantly
     setItems((prev) => prev.filter((n) => n.id !== id))
     fetch("/api/notifications/read", {
@@ -86,9 +112,7 @@ export function NotificationBell() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notificationId: id }),
     }).catch(() => {})
-    if (requestId) {
-      window.location.href = `/search/${requestId}`
-    }
+    if (href) window.location.href = href
   }
 
   if (!session?.user) return null
@@ -165,16 +189,13 @@ export function NotificationBell() {
               items.map((n) => (
                 <button
                   key={n.id}
-                  onClick={() => markRead(n.id, n.payload.requestId)}
+                  onClick={() => markRead(n.id, notificationLink(n))}
                   className="flex flex-col gap-1 px-4 py-3 text-left transition-colors border-b last:border-b-0 hover:opacity-80"
-                  style={{
-                    borderColor: "var(--p-border)",
-                    background: "transparent",
-                  }}
+                  style={{ borderColor: "var(--p-border)", background: "transparent" }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-[12px] font-medium leading-snug" style={{ color: "var(--p-ink)" }}>
-                      {n.payload.supplierName ?? "A supplier"} submitted a quotation
+                      {notificationTitle(n)}
                     </span>
                     <span className="text-[10px] flex-shrink-0 mt-0.5 font-mono" style={{ color: "var(--p-muted)" }}>
                       {timeAgo(n.createdAt)}
@@ -183,6 +204,11 @@ export function NotificationBell() {
                   {n.payload.requestTitle && (
                     <span className="text-[11px]" style={{ color: "var(--p-ink-2)" }}>
                       {n.payload.requestTitle}
+                    </span>
+                  )}
+                  {n.payload.comment && (
+                    <span className="text-[11px] italic" style={{ color: "var(--p-ink-2)" }}>
+                      "{n.payload.comment}"
                     </span>
                   )}
                   {n.payload.totalPrice && n.payload.currency && (

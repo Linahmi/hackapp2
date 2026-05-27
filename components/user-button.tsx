@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { GearSix, SignOut } from "phosphor-react"
+import { GearSix, Scales, SignOut } from "phosphor-react"
 
 function getInitials(name: string) {
   const parts = name.trim().split(" ")
@@ -79,6 +79,10 @@ export function UserButton() {
           <DropdownMenuItem onClick={() => router.push("/settings/company")} className="cursor-pointer gap-2 text-foreground">
             <GearSix size={16} />
             Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/approvals")} className="cursor-pointer gap-2 text-foreground">
+            <Scales size={16} />
+            Approvals
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer gap-2 text-foreground">

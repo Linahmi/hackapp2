@@ -2,7 +2,14 @@ import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth";
-import { AUDIT_EVENT_TYPES, getRequestById, logAuditEvent } from "@/db/queries";
+import {
+  AUDIT_EVENT_TYPES,
+  createApprovals,
+  createNotification,
+  getRequestById,
+  getRequiredApprovers,
+  logAuditEvent,
+} from "@/db/queries";
 import { db } from "@/db";
 import { quotation, rfqCampaign, supplierSelection } from "@/db/procurement-schema";
 
@@ -161,5 +168,62 @@ export async function POST(
     },
   });
 
-  return Response.json({ ok: true, selectionId: selectionId.id });
+  // ── Approval workflow ──────────────────────────────────────────────────────
+  // Find approvers whose threshold is exceeded by this quotation's total price.
+  const requiredApprovers = await getRequiredApprovers(
+    session.user.id,
+    quotationRow.totalPrice,
+    quotationRow.currency,
+  );
+
+  if (requiredApprovers.length === 0) {
+    // No approval needed — auto-approve immediately
+    await db
+      .update(supplierSelection)
+      .set({ status: "APPROVED" })
+      .where(eq(supplierSelection.id, selectionId.id));
+
+    await logAuditEvent({
+      requestId,
+      type: AUDIT_EVENT_TYPES.SELECTION_AUTO_APPROVED,
+      message: "Selection auto-approved (no approval threshold exceeded)",
+      metadata: { selectionId: selectionId.id },
+    });
+
+    return Response.json({ ok: true, selectionId: selectionId.id, requiresApproval: false });
+  }
+
+  // Create approval records and notify each approver
+  await createApprovals(selectionId.id, requiredApprovers.map((a) => a.approverUserId));
+
+  await Promise.all(
+    requiredApprovers.map((a) =>
+      createNotification({
+        userId: a.approverUserId,
+        type: "APPROVAL_REQUESTED",
+        payload: {
+          selectionId: selectionId.id,
+          requestId,
+          requestTitle: procurementRequest.title,
+          supplierName: quotationRow.supplier.name,
+          totalPrice: quotationRow.totalPrice,
+          currency: quotationRow.currency,
+          submittedBy: session.user.name ?? session.user.email ?? "A buyer",
+        },
+      }).catch((err) => console.error("[notification] Failed to notify approver", err)),
+    ),
+  );
+
+  await logAuditEvent({
+    requestId,
+    type: AUDIT_EVENT_TYPES.SELECTION_SUBMITTED_FOR_APPROVAL,
+    message: `Selection submitted for approval to ${requiredApprovers.length} approver${requiredApprovers.length !== 1 ? "s" : ""}`,
+    metadata: {
+      selectionId: selectionId.id,
+      approverCount: requiredApprovers.length,
+      approverIds: requiredApprovers.map((a) => a.approverUserId),
+    },
+  });
+
+  return Response.json({ ok: true, selectionId: selectionId.id, requiresApproval: true, approverCount: requiredApprovers.length });
 }
