@@ -38,6 +38,8 @@ export function NotificationBell() {
 
   const fetchNotifications = useCallback(async () => {
     if (!session?.user) return
+    // Skip fetch when tab is hidden — saves ~5000 req/weekend for idle tabs
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return
     try {
       const res = await fetch("/api/notifications")
       if (!res.ok) return
@@ -48,11 +50,16 @@ export function NotificationBell() {
     }
   }, [session?.user])
 
-  // Poll every 30 s
+  // Poll every 30 s; also refetch immediately when tab becomes visible again
   useEffect(() => {
     fetchNotifications()
     const interval = setInterval(fetchNotifications, 30_000)
-    return () => clearInterval(interval)
+    const onVisible = () => { if (document.visibilityState === "visible") fetchNotifications() }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
   }, [fetchNotifications])
 
   // Close on outside click
@@ -65,18 +72,20 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  async function markAllRead() {
-    await fetch("/api/notifications", { method: "DELETE" })
+  function markAllRead() {
+    // Optimistic: clear badge immediately, API call is fire-and-forget
     setItems([])
+    fetch("/api/notifications", { method: "DELETE" }).catch(() => {})
   }
 
-  async function markRead(id: string, requestId?: string) {
-    await fetch("/api/notifications/read", {
+  function markRead(id: string, requestId?: string) {
+    // Optimistic: remove from list immediately so badge refreshes instantly
+    setItems((prev) => prev.filter((n) => n.id !== id))
+    fetch("/api/notifications/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notificationId: id }),
-    })
-    setItems((prev) => prev.filter((n) => n.id !== id))
+    }).catch(() => {})
     if (requestId) {
       window.location.href = `/search/${requestId}`
     }

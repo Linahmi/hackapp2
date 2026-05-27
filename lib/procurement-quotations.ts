@@ -242,7 +242,9 @@ export async function submitSupplierQuotation(
   const buyerUserId = context.rfqMessage.campaign.request.userId;
 
   await Promise.all([
-    // Notify the buyer that a supplier replied
+    // Notify the request creator (request.userId) that a supplier replied.
+    // Scoped to the individual who created the request, not the whole company.
+    // When multi-user companies are added, extend this to notify all company members.
     buyerUserId
       ? createNotification({
           userId: buyerUserId,
