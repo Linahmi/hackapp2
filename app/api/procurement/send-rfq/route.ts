@@ -1,51 +1,7 @@
-/**
- * POST /api/procurement/send-rfq
- *
- * Creates an RFQ campaign, sends emails via Mailgun, and persists the full
- * lifecycle to the database.
- *
- * Request body:
- * {
- *   requestId: string          // DB UUID from procurementRequest
- *   messages: Array<{
- *     supplierId: string       // DB UUID from supplier table
- *     supplierEmail: string    // email to send to
- *     subject: string          // RFQ email subject
- *     body: string             // RFQ email body (plain text)
- *   }>
- * }
- *
- * Response:
- * {
- *   campaignId: string
- *   results: Array<{
- *     supplierId: string
- *     supplierEmail: string
- *     status: "QUEUED" | "FAILED"
- *     mailgunMessageId?: string
- *     error?: string
- *   }>
- * }
- */
-
 import { z } from "zod";
 
-import {
-  AUDIT_EVENT_TYPES,
-  addMessagesToCampaign,
-  createCampaign,
-  deriveCampaignStatus,
-  logAuditEvent,
-  updateCampaignStatus,
-  updateMessageStatus,
-  updateRequestStatus,
-} from "@/db/queries";
 import { auth } from "@/lib/auth";
-import { sendRfqEmail } from "@/lib/mailgun";
-
-// ─────────────────────────────────────────────────────────────
-// Schema
-// ─────────────────────────────────────────────────────────────
+import { sendProcurementRfqCampaign } from "@/lib/procurement-rfq-campaign";
 
 const messageSchema = z
   .object({
@@ -58,6 +14,7 @@ const messageSchema = z
 
 const requestSchema = z
   .object({
+    buyerCompanyName: z.string().trim().max(200).nullable().optional(),
     requestId: z.string().uuid("requestId must be a valid UUID"),
     messages: z
       .array(messageSchema)
@@ -66,12 +23,7 @@ const requestSchema = z
   })
   .strict();
 
-// ─────────────────────────────────────────────────────────────
-// Route
-// ─────────────────────────────────────────────────────────────
-
 export async function POST(request: Request) {
-  // ── Auth guard ──────────────────────────────────────────────────────────────
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) {
     return Response.json(
@@ -80,7 +32,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── Parse body ──────────────────────────────────────────────────────────────
   let body: unknown;
   try {
     body = await request.json();
@@ -93,154 +44,32 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error: "Invalid request body",
-        issues: parsed.error.issues.map((i) => ({
-          path: i.path.join("."),
-          message: i.message,
+        issues: parsed.error.issues.map((issue) => ({
+          message: issue.message,
+          path: issue.path.join("."),
         })),
       },
       { status: 400 },
     );
   }
 
-  const { requestId, messages } = parsed.data;
-
-  // ── Create campaign ─────────────────────────────────────────────────────────
-  let campaign: { id: string };
   try {
-    campaign = await createCampaign({ requestId });
-  } catch (err) {
-    console.error("[send-rfq] Failed to create campaign", err);
+    const result = await sendProcurementRfqCampaign({
+      buyer: {
+        buyerCompanyName: parsed.data.buyerCompanyName ?? null,
+        buyerEmail: session.user.email ?? null,
+        buyerName: session.user.name ?? null,
+      },
+      messages: parsed.data.messages,
+      requestId: parsed.data.requestId,
+    });
+
+    return Response.json(result);
+  } catch (error) {
+    console.error("[send-rfq] Failed to send RFQ campaign", error);
     return Response.json(
-      { error: "Failed to create RFQ campaign" },
+      { error: "Failed to send RFQ campaign" },
       { status: 500 },
     );
   }
-
-  // ── Insert message rows in PENDING state ────────────────────────────────────
-  let dbMessages: Array<{ id: string; supplierId: string }>;
-  try {
-    dbMessages = await addMessagesToCampaign(
-      messages.map((m) => ({
-        campaignId: campaign.id,
-        supplierId: m.supplierId,
-        supplierEmail: m.supplierEmail,
-        subject: m.subject,
-        body: m.body,
-        status: "PENDING" as const,
-      })),
-    );
-  } catch (err) {
-    console.error("[send-rfq] Failed to insert messages", err);
-    return Response.json(
-      { error: "Failed to create RFQ messages" },
-      { status: 500 },
-    );
-  }
-
-  // Build a map from supplierId → dbMessageId for status updates
-  const messageIdBySupplierId = new Map(
-    dbMessages.map((row) => [row.supplierId, row.id]),
-  );
-
-  // ── Update campaign to SENDING ──────────────────────────────────────────────
-  await updateCampaignStatus(campaign.id, "SENDING", new Date());
-  await updateRequestStatus(requestId, "SENT");
-
-  await logAuditEvent({
-    requestId,
-    campaignId: campaign.id,
-    type: AUDIT_EVENT_TYPES.CAMPAIGN_SENDING,
-    message: `Sending RFQ campaign to ${messages.length} supplier${messages.length !== 1 ? "s" : ""}`,
-    metadata: { messageCount: messages.length },
-  });
-
-  // ── Send via Mailgun ────────────────────────────────────────────────────────
-  // Send all messages concurrently. Each result is independent — a failure on
-  // one supplier email does not prevent the others from being sent.
-  const sendResults = await Promise.all(
-    messages.map(async (msg) => {
-      const dbMessageId = messageIdBySupplierId.get(msg.supplierId);
-
-      const result = await sendRfqEmail({
-        to: msg.supplierEmail,
-        subject: msg.subject,
-        text: msg.body,
-      });
-
-      if (result.ok) {
-        // Update to QUEUED with the Mailgun message ID for webhook correlation
-        if (dbMessageId) {
-          await updateMessageStatus(dbMessageId, "QUEUED", {
-            mailgunMessageId: result.mailgunMessageId,
-            sentAt: new Date(),
-          });
-        }
-
-        await logAuditEvent({
-          requestId,
-          campaignId: campaign.id,
-          type: AUDIT_EVENT_TYPES.MESSAGE_QUEUED,
-          message: `RFQ queued for ${msg.supplierEmail}`,
-          metadata: {
-            mailgunMessageId: result.mailgunMessageId,
-            supplierEmail: msg.supplierEmail,
-          },
-        });
-
-        return {
-          supplierId: msg.supplierId,
-          supplierEmail: msg.supplierEmail,
-          status: "QUEUED" as const,
-          mailgunMessageId: result.mailgunMessageId,
-        };
-      } else {
-        // Mark as FAILED in DB
-        if (dbMessageId) {
-          await updateMessageStatus(dbMessageId, "FAILED", {
-            failedAt: new Date(),
-            errorMessage: result.error,
-          });
-        }
-
-        await logAuditEvent({
-          requestId,
-          campaignId: campaign.id,
-          type: AUDIT_EVENT_TYPES.MESSAGE_FAILED,
-          message: `Failed to send RFQ to ${msg.supplierEmail}: ${result.error}`,
-          metadata: { supplierEmail: msg.supplierEmail, error: result.error },
-        });
-
-        return {
-          supplierId: msg.supplierId,
-          supplierEmail: msg.supplierEmail,
-          status: "FAILED" as const,
-          error: result.error,
-        };
-      }
-    }),
-  );
-
-  // ── Derive and persist final campaign status ────────────────────────────────
-  const finalStatus = await deriveCampaignStatus(campaign.id);
-  await updateCampaignStatus(campaign.id, finalStatus);
-
-  await logAuditEvent({
-    requestId,
-    campaignId: campaign.id,
-    type:
-      finalStatus === "SENT" || finalStatus === "PARTIALLY_SENT"
-        ? AUDIT_EVENT_TYPES.CAMPAIGN_SENT
-        : AUDIT_EVENT_TYPES.CAMPAIGN_FAILED,
-    message: `Campaign status: ${finalStatus}`,
-    metadata: {
-      sent: sendResults.filter((r) => r.status === "QUEUED").length,
-      failed: sendResults.filter((r) => r.status === "FAILED").length,
-    },
-  });
-
-  return Response.json({
-    campaignId: campaign.id,
-    campaignStatus: finalStatus,
-    results: sendResults,
-  });
 }

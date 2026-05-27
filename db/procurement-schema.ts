@@ -24,6 +24,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -112,6 +113,16 @@ export const supplierStatus = pgEnum("supplier_status", [
   "ACTIVE",
   "INACTIVE",
   "BLACKLISTED",
+]);
+
+/**
+ * Quotation review lifecycle after a supplier responds.
+ */
+export const quotationStatus = pgEnum("quotation_status", [
+  "SUBMITTED",
+  "REVIEWED",
+  "SELECTED",
+  "REJECTED",
 ]);
 
 // ─────────────────────────────────────────────────────────────
@@ -304,6 +315,72 @@ export const rfqMessage = pgTable(
 );
 
 /**
+ * Secure response tokens for public supplier quotation submission.
+ *
+ * Raw tokens are never stored. Only the SHA-256 hash is persisted.
+ * Multiple tokens may exist for the same RFQ message over time (for example,
+ * if a campaign is resent), but each token is single-use via usedAt.
+ */
+export const supplierResponseToken = pgTable(
+  "supplier_response_token",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rfqMessageId: uuid("rfq_message_id")
+      .notNull()
+      .references(() => rfqMessage.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("supplier_response_token_hash_unique_idx").on(t.tokenHash),
+    index("supplier_response_token_rfq_message_id_idx").on(t.rfqMessageId),
+    index("supplier_response_token_expires_at_idx").on(t.expiresAt),
+  ],
+);
+
+/**
+ * Structured supplier quotation linked to a campaign, message, and supplier.
+ */
+export const quotation = pgTable(
+  "quotation",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rfqCampaignId: uuid("rfq_campaign_id")
+      .notNull()
+      .references(() => rfqCampaign.id, { onDelete: "cascade" }),
+    rfqMessageId: uuid("rfq_message_id")
+      .notNull()
+      .references(() => rfqMessage.id, { onDelete: "cascade" }),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => supplier.id, { onDelete: "restrict" }),
+    currency: text("currency").notNull(),
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
+    totalPrice: numeric("total_price", { precision: 12, scale: 2 }).notNull(),
+    moq: integer("moq"),
+    leadTimeDays: integer("lead_time_days"),
+    notes: text("notes"),
+    attachmentUrl: text("attachment_url"),
+    submittedBy: text("submitted_by").notNull(),
+    submittedRole: text("submitted_role"),
+    confirmationAccepted: boolean("confirmation_accepted").notNull(),
+    submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    status: quotationStatus("status").notNull().default("SUBMITTED"),
+  },
+  (t) => [
+    uniqueIndex("quotation_rfq_message_unique_idx").on(t.rfqMessageId),
+    index("quotation_rfq_campaign_id_idx").on(t.rfqCampaignId),
+    index("quotation_supplier_id_idx").on(t.supplierId),
+    index("quotation_status_idx").on(t.status),
+    index("quotation_submitted_at_idx").on(t.submittedAt),
+  ],
+);
+
+/**
  * Append-only event log for full procurement lifecycle auditability.
  *
  * type is plain text (not an enum) so new event types can be added at
@@ -359,6 +436,7 @@ export const procurementRequestRelations = relations(
 export const supplierRelations = relations(supplier, ({ many }) => ({
   matches: many(supplierMatch),
   messages: many(rfqMessage),
+  quotations: many(quotation),
 }));
 
 export const supplierMatchRelations = relations(supplierMatch, ({ one }) => ({
@@ -378,16 +456,44 @@ export const rfqCampaignRelations = relations(rfqCampaign, ({ one, many }) => ({
     references: [procurementRequest.id],
   }),
   messages: many(rfqMessage),
+  quotations: many(quotation),
   auditEvents: many(auditEvent),
 }));
 
-export const rfqMessageRelations = relations(rfqMessage, ({ one }) => ({
+export const rfqMessageRelations = relations(rfqMessage, ({ one, many }) => ({
   campaign: one(rfqCampaign, {
     fields: [rfqMessage.campaignId],
     references: [rfqCampaign.id],
   }),
   supplier: one(supplier, {
     fields: [rfqMessage.supplierId],
+    references: [supplier.id],
+  }),
+  responseTokens: many(supplierResponseToken),
+  quotations: many(quotation),
+}));
+
+export const supplierResponseTokenRelations = relations(
+  supplierResponseToken,
+  ({ one }) => ({
+    rfqMessage: one(rfqMessage, {
+      fields: [supplierResponseToken.rfqMessageId],
+      references: [rfqMessage.id],
+    }),
+  }),
+);
+
+export const quotationRelations = relations(quotation, ({ one }) => ({
+  campaign: one(rfqCampaign, {
+    fields: [quotation.rfqCampaignId],
+    references: [rfqCampaign.id],
+  }),
+  rfqMessage: one(rfqMessage, {
+    fields: [quotation.rfqMessageId],
+    references: [rfqMessage.id],
+  }),
+  supplier: one(supplier, {
+    fields: [quotation.supplierId],
     references: [supplier.id],
   }),
 }));
@@ -422,6 +528,12 @@ export type NewRfqCampaign = typeof rfqCampaign.$inferInsert;
 export type RfqMessage = typeof rfqMessage.$inferSelect;
 export type NewRfqMessage = typeof rfqMessage.$inferInsert;
 
+export type SupplierResponseToken = typeof supplierResponseToken.$inferSelect;
+export type NewSupplierResponseToken = typeof supplierResponseToken.$inferInsert;
+
+export type Quotation = typeof quotation.$inferSelect;
+export type NewQuotation = typeof quotation.$inferInsert;
+
 export type AuditEvent = typeof auditEvent.$inferSelect;
 export type NewAuditEvent = typeof auditEvent.$inferInsert;
 
@@ -430,6 +542,7 @@ export type RequestStatus = (typeof requestStatus.enumValues)[number];
 export type CampaignStatus = (typeof campaignStatus.enumValues)[number];
 export type MessageStatus = (typeof messageStatus.enumValues)[number];
 export type SupplierStatus = (typeof supplierStatus.enumValues)[number];
+export type QuotationStatus = (typeof quotationStatus.enumValues)[number];
 
 /**
  * Canonical audit event type strings.
@@ -454,6 +567,10 @@ export const AUDIT_EVENT_TYPES = {
   MESSAGE_FAILED: "MESSAGE_FAILED",
   WEBHOOK_RECEIVED: "WEBHOOK_RECEIVED",
   STATUS_CHANGED: "STATUS_CHANGED",
+  SUPPLIER_RESPONSE_LINK_CREATED: "supplier_response_link_created",
+  SUPPLIER_RESPONSE_PAGE_OPENED: "supplier_response_page_opened",
+  QUOTATION_SUBMITTED: "quotation_submitted",
+  RFQ_MESSAGE_REPLIED: "rfq_message_replied",
 } as const;
 
 export type AuditEventType =

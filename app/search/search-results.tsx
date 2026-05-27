@@ -42,6 +42,7 @@ import {
   type ProcurementCompanyDetailsLink,
   type ProcurementCompanyDetailsRisk,
   type ProcurementCompanyDetailsResponse,
+  type ProcurementReceivedQuotation,
   type ProcurementQuoteResponse,
   procurementSearchStorageKey,
   type ProcurementSearchPayload,
@@ -1944,14 +1945,108 @@ function ProcoraPanel({
 
 // ── Step 3: Send RFQs (multi-supplier view) ────────────────────────────────────
 
+function ReceivedQuotationsSection({
+  error,
+  loading,
+  onRefresh,
+  quotations,
+}: {
+  error: string | null
+  loading: boolean
+  onRefresh: () => void
+  quotations: ProcurementReceivedQuotation[]
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Received quotations</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Real supplier submissions linked to this RFQ campaign.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+        >
+          {loading ? <SpinnerGap size={12} weight="bold" className="animate-spin" /> : null}
+          Refresh
+        </button>
+      </div>
+
+      {error ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {error}
+        </p>
+      ) : null}
+
+      {quotations.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No supplier quotations received yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                <th className="px-3 py-2 font-medium">Supplier</th>
+                <th className="px-3 py-2 font-medium">Unit price</th>
+                <th className="px-3 py-2 font-medium">Total price</th>
+                <th className="px-3 py-2 font-medium">Currency</th>
+                <th className="px-3 py-2 font-medium">Lead time</th>
+                <th className="px-3 py-2 font-medium">MOQ</th>
+                <th className="px-3 py-2 font-medium">Submitted</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotations.map((quotation) => (
+                <tr key={quotation.id} className="border-b border-border/60 align-top">
+                  <td className="px-3 py-3 text-foreground">
+                    <div className="font-medium">{quotation.supplierName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {quotation.submittedBy}
+                      {quotation.submittedRole ? `, ${quotation.submittedRole}` : ""}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-foreground">{quotation.unitPrice}</td>
+                  <td className="px-3 py-3 text-foreground">{quotation.totalPrice}</td>
+                  <td className="px-3 py-3 text-foreground">{quotation.currency}</td>
+                  <td className="px-3 py-3 text-foreground">
+                    {quotation.leadTimeDays !== null ? `${quotation.leadTimeDays} days` : "—"}
+                  </td>
+                  <td className="px-3 py-3 text-foreground">
+                    {quotation.moq !== null ? quotation.moq.toLocaleString() : "—"}
+                  </td>
+                  <td className="px-3 py-3 text-foreground">
+                    {new Date(quotation.submittedAt).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-3 text-foreground">{quotation.status}</td>
+                  <td className="px-3 py-3 text-muted-foreground">
+                    {quotation.notes?.trim() || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function MultiRFQStep({
   approvedIndices,
   campaignSending,
   dbMeta,
   manualEmails,
+  onRefreshQuotations,
   onManualEmailChange,
   onSendCampaign,
   providers,
+  receivedQuotations,
+  receivedQuotationsError,
+  receivedQuotationsLoading,
   quotationsErrorMap,
   quotationsLoadingSet,
   quotationsMap,
@@ -1961,9 +2056,13 @@ function MultiRFQStep({
   campaignSending: boolean
   dbMeta: ProcurementSearchResponse["_db"] | undefined
   manualEmails: Record<number, string>
+  onRefreshQuotations: () => void
   onManualEmailChange: (idx: number, email: string) => void
   onSendCampaign: () => void
   providers: Provider[]
+  receivedQuotations: ProcurementReceivedQuotation[]
+  receivedQuotationsError: string | null
+  receivedQuotationsLoading: boolean
   quotationsErrorMap: Record<number, string>
   quotationsLoadingSet: number[]
   quotationsMap: Record<number, ProcurementQuoteResponse>
@@ -2009,6 +2108,13 @@ function MultiRFQStep({
         quotationsLoadingSet={quotationsLoadingSet}
         quotationsMap={quotationsMap}
         rfqSendStates={rfqSendStates}
+      />
+
+      <ReceivedQuotationsSection
+        error={receivedQuotationsError}
+        loading={receivedQuotationsLoading}
+        onRefresh={onRefreshQuotations}
+        quotations={receivedQuotations}
       />
 
       {/* Supplier tab switcher */}
@@ -2241,6 +2347,9 @@ export function SearchResults({
   const [campaignSending, setCampaignSending] = useState(false)
   // Manually entered emails for suppliers where no email was auto-detected
   const [manualEmails, setManualEmails] = useState<Record<number, string>>({})
+  const [receivedQuotations, setReceivedQuotations] = useState<ProcurementReceivedQuotation[]>([])
+  const [receivedQuotationsLoading, setReceivedQuotationsLoading] = useState(false)
+  const [receivedQuotationsError, setReceivedQuotationsError] = useState<string | null>(null)
 
   // ── Audit trail ──
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
@@ -2303,6 +2412,9 @@ export function SearchResults({
     setRfqSendStates({})
     setCampaignSending(false)
     setManualEmails({})
+    setReceivedQuotations([])
+    setReceivedQuotationsLoading(false)
+    setReceivedQuotationsError(null)
 
     let parsedPayload: ProcurementSearchPayload
 
@@ -2905,6 +3017,45 @@ export function SearchResults({
     }
   }, [dbMeta, campaignSending, approvedIndices, quotationsMap, manualEmails, logAudit])
 
+  const refreshReceivedQuotations = useCallback(async () => {
+    if (!dbMeta?.requestId) return
+
+    setReceivedQuotationsLoading(true)
+    setReceivedQuotationsError(null)
+
+    try {
+      const response = await fetch(`/api/procurement/requests/${dbMeta.requestId}/quotations`, {
+        method: "GET",
+      })
+      const data = (await response.json().catch(() => null)) as
+        | { error?: string; quotations?: ProcurementReceivedQuotation[] }
+        | null
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to load quotations")
+      }
+
+      setReceivedQuotations(data?.quotations ?? [])
+    } catch (error) {
+      setReceivedQuotationsError(
+        error instanceof Error ? error.message : "Failed to load quotations"
+      )
+    } finally {
+      setReceivedQuotationsLoading(false)
+    }
+  }, [dbMeta?.requestId])
+
+  useEffect(() => {
+    if (!isProcurementMode || procurementStep !== 3 || !dbMeta?.requestId) return
+
+    void refreshReceivedQuotations()
+    const intervalId = window.setInterval(() => {
+      void refreshReceivedQuotations()
+    }, 15000)
+
+    return () => window.clearInterval(intervalId)
+  }, [dbMeta?.requestId, isProcurementMode, procurementStep, refreshReceivedQuotations])
+
   if (!query) return null
 
   const heading = null
@@ -3068,11 +3219,15 @@ export function SearchResults({
                   campaignSending={campaignSending}
                   dbMeta={dbMeta}
                   manualEmails={manualEmails}
+                  onRefreshQuotations={refreshReceivedQuotations}
                   onManualEmailChange={(idx, email) =>
                     setManualEmails((prev) => ({ ...prev, [idx]: email }))
                   }
                   onSendCampaign={handleSendCampaign}
                   providers={procurementSourceProviders}
+                  receivedQuotations={receivedQuotations}
+                  receivedQuotationsError={receivedQuotationsError}
+                  receivedQuotationsLoading={receivedQuotationsLoading}
                   quotationsErrorMap={quotationsErrorMap}
                   quotationsLoadingSet={quotationsLoadingSet}
                   quotationsMap={quotationsMap}

@@ -32,6 +32,7 @@ export async function getRequestById(id: string) {
   return db.query.procurementRequest.findFirst({
     where: eq(procurementRequest.id, id),
     with: {
+      user: true,
       matches: {
         with: { supplier: true },
         orderBy: (m, { desc }) => [desc(m.matchScore)],
@@ -40,6 +41,10 @@ export async function getRequestById(id: string) {
         with: {
           messages: {
             with: { supplier: true },
+          },
+          quotations: {
+            with: { supplier: true, rfqMessage: true },
+            orderBy: (q, { desc }) => [desc(q.submittedAt)],
           },
         },
       },

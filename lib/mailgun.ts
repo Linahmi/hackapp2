@@ -73,10 +73,14 @@ export type MailgunWebhookPayload = {
  * Returns { ok: false, error } on any failure — never throws.
  */
 export async function sendRfqEmail({
+  html,
+  replyTo,
   to,
   subject,
   text,
 }: {
+  html?: string;
+  replyTo?: string;
   to: string;
   subject: string;
   text: string;
@@ -96,6 +100,8 @@ export async function sendRfqEmail({
   form.append("to", to);
   form.append("subject", subject);
   form.append("text", text);
+  if (html) form.append("html", html);
+  if (replyTo) form.append("h:Reply-To", replyTo);
   // Track opens so we can fire the OPENED webhook event
   form.append("o:tracking-opens", "yes");
 

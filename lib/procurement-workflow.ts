@@ -1190,7 +1190,7 @@ function providerEmail(
   const body = [
     `Hello ${provider} team,`,
     "",
-    "Procora is preparing a procurement request and we would like to request a formal quotation.",
+    "We would like to request a formal quotation for the procurement opportunity below.",
     "",
     `Requested resource: ${resource}`,
     `Quantity: ${request.quantity?.toLocaleString() ?? "Not specified"}`,
@@ -1202,9 +1202,10 @@ function providerEmail(
     `Compliance or constraints: ${listOrFallback(request.constraints, details.compliance.summary)}`,
     "",
     "Please confirm price, stock availability, delivery timing, warranty terms, compliance documentation, and quote validity period.",
+    "A secure quotation submission link will be added when this RFQ is sent via Procora.",
     "",
     "Regards,",
-    "Procora",
+    "Procurement team",
   ].join("\n")
 
   return {

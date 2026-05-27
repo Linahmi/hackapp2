@@ -22,6 +22,7 @@ const envSchema = z.object({
   MAILGUN_WEBHOOK_SIGNING_KEY: z.string().optional(),
   // EU customers: https://api.eu.mailgun.net
   MAILGUN_API_BASE: z.string().url().optional(),
+  NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 });
 
 export const env = envSchema.parse({
@@ -38,4 +39,5 @@ export const env = envSchema.parse({
   MAILGUN_FROM: process.env.MAILGUN_FROM,
   MAILGUN_WEBHOOK_SIGNING_KEY: process.env.MAILGUN_WEBHOOK_SIGNING_KEY,
   MAILGUN_API_BASE: process.env.MAILGUN_API_BASE,
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
 });

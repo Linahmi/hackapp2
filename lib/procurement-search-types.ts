@@ -219,3 +219,19 @@ export type ProcurementQuoteResponse = {
     title: string
   }
 }
+
+export type ProcurementReceivedQuotation = {
+  campaignId: string
+  currency: string
+  id: string
+  leadTimeDays: number | null
+  moq: number | null
+  notes: string | null
+  status: "SUBMITTED" | "REVIEWED" | "SELECTED" | "REJECTED"
+  submittedAt: string
+  submittedBy: string
+  submittedRole: string | null
+  supplierName: string
+  totalPrice: string
+  unitPrice: string
+}
