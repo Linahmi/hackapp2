@@ -60,11 +60,17 @@ export function QuotationResponseForm({ supplierName, token }: Props) {
 
       // Step 2: PUT the file directly to storage (no server intermediary)
       setUploadState({ status: "uploading", progress: 50 });
-      const uploadRes = await fetch(presignData.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
+      let uploadRes: Response;
+      try {
+        uploadRes = await fetch(presignData.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+      } catch {
+        // A network error here is almost always a CORS misconfiguration on the bucket
+        throw new Error("Upload blocked — storage CORS is not configured. Contact the buyer.");
+      }
       if (!uploadRes.ok) throw new Error("Upload failed. Please try again.");
 
       setUploadState({ status: "done", filename: file.name, url: presignData.fileUrl });

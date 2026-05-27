@@ -88,7 +88,7 @@ export function NotificationBell() {
     if (n.type === "SELECTION_APPROVED" || n.type === "SELECTION_REJECTED") {
       return n.payload.requestId ? `/requests/${n.payload.requestId}/compare` : undefined
     }
-    return n.payload.requestId ? `/search/${n.payload.requestId}` : undefined
+    return n.payload.requestId ? `/requests/${n.payload.requestId}/compare` : undefined
   }
 
   function notificationTitle(n: NotificationItem): string {

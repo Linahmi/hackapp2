@@ -339,7 +339,9 @@ async function sendSupplierConfirmationEmail(params: {
 
   const buyerName = settings?.companyName ?? "the buyer";
   const fromDomain = env.MAILGUN_DOMAIN;
-  const from = `Procora <noreply@${fromDomain}>`;
+  const fromName = [settings?.senderName, settings?.companyName].filter(Boolean).join(" — ") || "Procora";
+  const fromAddress = fromDomain ? `noreply@${fromDomain}` : undefined;
+  const from = fromAddress ? `${fromName} <${fromAddress}>` : undefined;
   const replyTo = settings?.senderEmail ?? undefined;
 
   const subject = `Your quotation has been received — ${params.requestTitle}`;

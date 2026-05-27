@@ -448,16 +448,7 @@ export default function ComparePage() {
                     )}
 
                     {q.attachmentUrl && (
-                      <a
-                        href={q.attachmentUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[11px] font-medium transition-opacity hover:opacity-70"
-                        style={{ color: "var(--p-accent)" }}
-                      >
-                        <FileText size={12} />
-                        View attachment
-                      </a>
+                      <AttachmentLink url={q.attachmentUrl} />
                     )}
 
                     {/* Action button */}
@@ -508,5 +499,34 @@ function Detail({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] uppercase tracking-[0.06em] mb-0.5" style={{ color: "var(--p-muted)" }}>{label}</p>
       <p className="text-[12px] font-medium" style={{ color: "var(--p-ink)" }}>{value}</p>
     </div>
+  )
+}
+
+function AttachmentLink({ url }: { url: string }) {
+  const [loading, setLoading] = useState(false)
+
+  async function open() {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/upload/presign-download?url=${encodeURIComponent(url)}`)
+      const data = (await res.json()) as { downloadUrl?: string; error?: string }
+      if (res.ok && data.downloadUrl) {
+        window.open(data.downloadUrl, "_blank", "noopener,noreferrer")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={open}
+      disabled={loading}
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium transition-opacity hover:opacity-70 disabled:opacity-50"
+      style={{ color: "var(--p-accent)" }}
+    >
+      <FileText size={12} />
+      {loading ? "Opening…" : "View attachment"}
+    </button>
   )
 }

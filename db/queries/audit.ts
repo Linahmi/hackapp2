@@ -15,7 +15,7 @@
  *   })
  */
 
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 
 import { db } from "../index";
 import {
@@ -62,7 +62,7 @@ export async function logAuditEvent(input: LogAuditEventInput): Promise<void> {
 export async function getAuditTrailForRequest(requestId: string) {
   return db.query.auditEvent.findMany({
     where: eq(auditEvent.requestId, requestId),
-    orderBy: [desc(auditEvent.createdAt)],
+    orderBy: [asc(auditEvent.createdAt)],
   });
 }
 

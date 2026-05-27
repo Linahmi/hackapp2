@@ -12,7 +12,7 @@
  *   STORAGE_REGION             — AWS region or "auto" for R2 (default: "us-east-1")
  */
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import { env } from "./env";
@@ -52,6 +52,46 @@ export type PresignResult =
   | { ok: true; uploadUrl: string; fileUrl: string; key: string }
   | { ok: false; error: string };
 
+export type PresignDownloadResult =
+  | { ok: true; downloadUrl: string }
+  | { ok: false; error: string };
+
+/**
+ * Generate a presigned GET URL for a previously uploaded attachment.
+ * Accepts the full public URL stored in the DB and derives the object key from it.
+ * TTL is intentionally short (5 min) — these URLs are single-use download triggers.
+ */
+export async function presignAttachmentDownload(
+  attachmentUrl: string,
+): Promise<PresignDownloadResult> {
+  if (!storageIsConfigured()) {
+    return { ok: false, error: "File storage is not configured." };
+  }
+
+  const publicBase = env.STORAGE_PUBLIC_URL!.replace(/\/$/, "");
+  if (!attachmentUrl.startsWith(publicBase + "/")) {
+    return { ok: false, error: "Attachment URL does not match storage configuration." };
+  }
+
+  const key = attachmentUrl.slice(publicBase.length + 1);
+
+  const command = new GetObjectCommand({
+    Bucket: env.STORAGE_BUCKET!,
+    Key: key,
+  });
+
+  try {
+    const client = buildClient();
+    const downloadUrl = await getSignedUrl(client, command, { expiresIn: 300 }); // 5 min
+    return { ok: true, downloadUrl };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Failed to generate download URL",
+    };
+  }
+}
+
 /**
  * Generate a presigned PUT URL for a supplier attachment.
  * The browser uploads directly to S3/R2 — no file bytes pass through our server.
@@ -83,6 +123,8 @@ export async function presignAttachmentUpload(
   const safeName = originalFilename
     .replace(/[^a-zA-Z0-9._-]/g, "_")
     .slice(0, 80);
+  // UUID prefix makes the key unguessable, but the bucket should still be private.
+  // Buyer download access should eventually use presigned GET URLs, not public reads.
   const key = `quotations/${randomUUID()}/${safeName}`;
 
   const command = new PutObjectCommand({

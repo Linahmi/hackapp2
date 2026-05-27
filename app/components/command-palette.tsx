@@ -11,17 +11,49 @@ type Item = {
   status?: "active" | "done" | "approval"
 }
 
+type RequestRow = {
+  id: string
+  title: string
+  status: string
+  createdAt: string
+}
+
 const STATUS_COLORS: Record<string, string> = {
   active: "var(--p-accent)",
   done: "var(--p-faint)",
   approval: "var(--p-amber)",
 }
 
+function statusToVariant(status: string): "active" | "done" | "approval" {
+  if (["APPROVED", "COMPLETED", "CANCELLED"].includes(status)) return "done"
+  if (["SUPPLIER_SELECTED"].includes(status)) return "approval"
+  return "active"
+}
+
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState("")
+  const [items, setItems] = useState<Item[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const items: Item[] = []
+  useEffect(() => {
+    if (!open) return
+    fetch("/api/requests")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { requests?: RequestRow[] } | null) => {
+        if (!data?.requests) return
+        setItems(
+          data.requests.map((r) => ({
+            id: r.id,
+            type: "request" as const,
+            label: r.title,
+            meta: r.status.replace(/_/g, " ").toLowerCase(),
+            status: statusToVariant(r.status),
+          }))
+        )
+      })
+      .catch(() => {})
+  }, [open])
+
   const filtered = query.trim()
     ? items.filter(
         (item) =>
@@ -119,7 +151,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                     <motion.button
                       key={item.id}
                       whileHover={{ backgroundColor: "var(--p-surface-alt)" }}
-                      onClick={onClose}
+                      onClick={() => { onClose(); window.location.href = `/requests/${item.id}/compare` }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
                     >
                       <span

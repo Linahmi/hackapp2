@@ -94,6 +94,12 @@ export async function POST(request: Request) {
         >,
       });
 
+      await logAuditEvent({
+        requestId: dbRequest.id,
+        type: AUDIT_EVENT_TYPES.REQUEST_CREATED,
+        message: `Request created: ${dbRequest.title}`,
+      });
+
       // 2. Upsert all suppliers — keyed by domain so duplicates are merged
       const supplierRows = await Promise.all(
         searchResponse.results.map((result) =>
