@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   AUDIT_EVENT_TYPES,
+  createNotification,
   getActiveSupplierResponseTokenByHash,
   getCompanySettings,
   getQuotationByMessageId,
@@ -238,7 +239,24 @@ export async function submitSupplierQuotation(
     return quotationRow;
   });
 
+  const buyerUserId = context.rfqMessage.campaign.request.userId;
+
   await Promise.all([
+    // Notify the buyer that a supplier replied
+    buyerUserId
+      ? createNotification({
+          userId: buyerUserId,
+          type: "QUOTATION_RECEIVED",
+          payload: {
+            supplierName: context.rfqMessage.supplier.name,
+            requestTitle: context.rfqMessage.campaign.request.title,
+            requestId: context.rfqMessage.campaign.requestId,
+            quotationId: quotationRow.id,
+            totalPrice: parsed.data.totalPrice.toFixed(2),
+            currency: parsed.data.currency.trim().toUpperCase(),
+          },
+        }).catch((err) => console.error("[notification] Failed to create notification", err))
+      : Promise.resolve(),
     logAuditEvent({
       requestId: context.rfqMessage.campaign.requestId,
       campaignId: context.rfqMessage.campaignId,

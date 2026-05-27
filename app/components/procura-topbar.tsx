@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { UserButton } from "@/components/user-button"
 import { CommandPalette } from "./command-palette"
 import { ProcoraLogo } from "./procura-logo"
+import { NotificationBell } from "./notification-bell"
 
 export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -80,6 +81,8 @@ export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string
             New request
           </Link>
         </nav>
+
+        <NotificationBell />
 
         {/* Divider */}
         <div className="w-px h-5 flex-shrink-0" style={{ background: "var(--p-border-strong)" }} />
