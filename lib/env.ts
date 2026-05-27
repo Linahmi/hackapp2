@@ -18,9 +18,10 @@ const envSchema = z.object({
   MAILGUN_API_KEY: z.string().optional(),
   MAILGUN_DOMAIN: z.string().optional(),
   MAILGUN_FROM: z.string().optional(),
+  MAILGUN_REGION: z.enum(["us", "eu"]).optional(),
   // Mailgun webhook signing key (Settings → Webhooks in Mailgun dashboard)
   MAILGUN_WEBHOOK_SIGNING_KEY: z.string().optional(),
-  // EU customers: https://api.eu.mailgun.net
+  // EU customers: https://api.eu.mailgun.net (auto-set by MAILGUN_REGION=eu)
   MAILGUN_API_BASE: z.string().url().optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 });
@@ -37,6 +38,7 @@ export const env = envSchema.parse({
   MAILGUN_API_KEY: process.env.MAILGUN_API_KEY,
   MAILGUN_DOMAIN: process.env.MAILGUN_DOMAIN,
   MAILGUN_FROM: process.env.MAILGUN_FROM,
+  MAILGUN_REGION: process.env.MAILGUN_REGION as "us" | "eu" | undefined,
   MAILGUN_WEBHOOK_SIGNING_KEY: process.env.MAILGUN_WEBHOOK_SIGNING_KEY,
   MAILGUN_API_BASE: process.env.MAILGUN_API_BASE,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,

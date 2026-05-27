@@ -15,7 +15,9 @@
 import { createHmac } from "crypto";
 import { env } from "./env";
 
-const API_BASE = env.MAILGUN_API_BASE ?? "https://api.mailgun.net";
+const API_BASE =
+  env.MAILGUN_API_BASE ??
+  (env.MAILGUN_REGION === "eu" ? "https://api.eu.mailgun.net" : "https://api.mailgun.net");
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -73,12 +75,14 @@ export type MailgunWebhookPayload = {
  * Returns { ok: false, error } on any failure — never throws.
  */
 export async function sendRfqEmail({
+  from: fromOverride,
   html,
   replyTo,
   to,
   subject,
   text,
 }: {
+  from?: string;
   html?: string;
   replyTo?: string;
   to: string;
@@ -87,16 +91,18 @@ export async function sendRfqEmail({
 }): Promise<MailgunSendResult> {
   const { MAILGUN_API_KEY, MAILGUN_DOMAIN, MAILGUN_FROM } = env;
 
-  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN || !MAILGUN_FROM) {
+  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
     return {
       ok: false,
-      error:
-        "Mailgun is not configured. Set MAILGUN_API_KEY, MAILGUN_DOMAIN, and MAILGUN_FROM in your environment.",
+      error: "Mailgun is not configured. Set MAILGUN_API_KEY and MAILGUN_DOMAIN in your environment.",
     };
   }
 
+  // FROM: buyer-branded override > MAILGUN_FROM env > noreply@domain fallback
+  const from = fromOverride ?? MAILGUN_FROM ?? `Procora RFQ <noreply@${MAILGUN_DOMAIN}>`;
+
   const form = new FormData();
-  form.append("from", MAILGUN_FROM);
+  form.append("from", from);
   form.append("to", to);
   form.append("subject", subject);
   form.append("text", text);

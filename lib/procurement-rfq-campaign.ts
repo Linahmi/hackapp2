@@ -24,6 +24,9 @@ type BuyerContext = {
   buyerCompanyName?: string | null;
   buyerEmail?: string | null;
   buyerName?: string | null;
+  buyerRole?: string | null;
+  logoUrl?: string | null;
+  signature?: string | null;
 };
 
 function buildResponseUrl(rawToken: string) {
@@ -38,6 +41,16 @@ function buildEmailText(
 ) {
   const buyerSignature = buyer.buyerCompanyName || buyer.buyerName || "the buyer";
 
+  const signatureBlock = buyer.signature
+    ? buyer.signature
+    : [
+        buyer.buyerName,
+        buyer.buyerRole,
+        buyer.buyerCompanyName,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+
   return [
     baseBody,
     "",
@@ -45,7 +58,7 @@ function buildEmailText(
     "",
     "If the button or link does not work, please reply directly to this email.",
     "",
-    `Sent on behalf of ${buyerSignature}.`,
+    signatureBlock ? `Sent on behalf of ${signatureBlock}.` : `Sent on behalf of ${buyerSignature}.`,
   ].join("\n");
 }
 
@@ -69,15 +82,27 @@ function buildEmailHtml(
     .join("");
 
   const buyerSignature = buyer.buyerCompanyName || buyer.buyerName || "the buyer";
+  const signatureHtml = buyer.signature
+    ? escapeHtml(buyer.signature).replaceAll("\n", "<br />")
+    : [buyer.buyerName, buyer.buyerRole, buyer.buyerCompanyName]
+        .filter(Boolean)
+        .map((v) => escapeHtml(v!))
+        .join(" &mdash; ");
+
+  const logoBlock = buyer.logoUrl
+    ? `<div style="margin-bottom:24px;"><img src="${escapeHtml(buyer.logoUrl)}" alt="${escapeHtml(buyer.buyerCompanyName ?? "")}" style="max-height:48px; max-width:180px; object-fit:contain;" /></div>`
+    : "";
 
   return [
     `<div style="font-family:Arial,sans-serif; background:#f6f7f9; padding:32px;">`,
     `<div style="max-width:680px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:18px; padding:32px;">`,
+    logoBlock,
     paragraphs,
     `<p style="margin:24px 0 12px; color:#374151;">Please submit your quotation using the secure response link below.</p>`,
     `<a href="${escapeHtml(responseUrl)}" style="display:inline-block; background:#14532d; color:#ffffff; text-decoration:none; padding:12px 20px; border-radius:999px; font-weight:600;">Submit quotation</a>`,
     `<p style="margin:18px 0 0; font-size:13px; color:#6b7280;">If the button does not work, open this link in your browser:<br /><a href="${escapeHtml(responseUrl)}" style="color:#14532d;">${escapeHtml(responseUrl)}</a></p>`,
-    `<p style="margin:24px 0 0; font-size:13px; color:#6b7280;">Sent on behalf of ${escapeHtml(buyerSignature)}.</p>`,
+    `<hr style="margin:28px 0; border:none; border-top:1px solid #e5e7eb;" />`,
+    `<p style="margin:0; font-size:13px; color:#6b7280; line-height:1.6;">${signatureHtml || `Sent on behalf of ${escapeHtml(buyerSignature)}.`}</p>`,
     `</div>`,
     `</div>`,
   ].join("");
@@ -152,7 +177,16 @@ export async function sendProcurementRfqCampaign(input: {
         },
       });
 
+      // Build buyer-branded FROM display name: "Sophie Weber — Garage Bern AG"
+      // Technical sender stays noreply@mg.procora.ch for deliverability.
+      const fromName = [buyer.buyerName, buyer.buyerCompanyName]
+        .filter(Boolean)
+        .join(" — ") || "Procora RFQ";
+      const fromAddress = env.MAILGUN_DOMAIN ? `noreply@${env.MAILGUN_DOMAIN}` : undefined;
+      const from = fromAddress ? `${fromName} <${fromAddress}>` : undefined;
+
       const result = await sendRfqEmail({
+        from,
         html: buildEmailHtml(message.body, responseUrl, buyer),
         replyTo: buyer.buyerEmail ?? undefined,
         subject: message.subject,

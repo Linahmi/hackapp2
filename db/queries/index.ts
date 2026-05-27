@@ -10,3 +10,4 @@ export * from "./suppliers";
 export * from "./campaigns";
 export * from "./audit";
 export * from "./quotations";
+export * from "./settings";

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { auth } from "@/lib/auth";
+import { getCompanySettings } from "@/db/queries";
 import { sendProcurementRfqCampaign } from "@/lib/procurement-rfq-campaign";
 
 const messageSchema = z
@@ -54,11 +55,26 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Load buyer identity from saved settings, fall back to session values
+    const companySettings = await getCompanySettings(session.user.id).catch(() => null);
+
     const result = await sendProcurementRfqCampaign({
       buyer: {
-        buyerCompanyName: parsed.data.buyerCompanyName ?? null,
-        buyerEmail: session.user.email ?? null,
-        buyerName: session.user.name ?? null,
+        buyerCompanyName:
+          parsed.data.buyerCompanyName ??
+          companySettings?.companyName ??
+          null,
+        buyerEmail:
+          companySettings?.senderEmail ??
+          session.user.email ??
+          null,
+        buyerName:
+          companySettings?.senderName ??
+          session.user.name ??
+          null,
+        buyerRole: companySettings?.senderRole ?? null,
+        logoUrl: companySettings?.logoUrl ?? null,
+        signature: companySettings?.signature ?? null,
       },
       messages: parsed.data.messages,
       requestId: parsed.data.requestId,

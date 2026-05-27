@@ -509,6 +509,36 @@ export const auditEventRelations = relations(auditEvent, ({ one }) => ({
   }),
 }));
 
+/**
+ * One row per user — stores their sender identity used in outbound RFQ emails.
+ * Upserted on save (userId is unique).
+ */
+export const companySettings = pgTable("company_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  companyName: text("company_name"),
+  senderName: text("sender_name"),
+  senderRole: text("sender_role"),
+  senderEmail: text("sender_email"),
+  logoUrl: text("logo_url"),
+  signature: text("signature"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const companySettingsRelations = relations(companySettings, ({ one }) => ({
+  user: one(user, {
+    fields: [companySettings.userId],
+    references: [user.id],
+  }),
+}));
+
 // ─────────────────────────────────────────────────────────────
 // Type exports
 // ─────────────────────────────────────────────────────────────
@@ -536,6 +566,9 @@ export type NewQuotation = typeof quotation.$inferInsert;
 
 export type AuditEvent = typeof auditEvent.$inferSelect;
 export type NewAuditEvent = typeof auditEvent.$inferInsert;
+
+export type CompanySettings = typeof companySettings.$inferSelect;
+export type NewCompanySettings = typeof companySettings.$inferInsert;
 
 // Enum value unions (use these in application code instead of raw strings)
 export type RequestStatus = (typeof requestStatus.enumValues)[number];

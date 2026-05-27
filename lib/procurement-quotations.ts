@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   AUDIT_EVENT_TYPES,
   getActiveSupplierResponseTokenByHash,
+  getCompanySettings,
   getQuotationByMessageId,
   getSupplierResponseTokenByHash,
   listQuotationsForRequest,
@@ -15,6 +16,8 @@ import {
   rfqMessage,
   supplierResponseToken,
 } from "@/db/procurement-schema";
+import { sendRfqEmail } from "@/lib/mailgun";
+import { env } from "@/lib/env";
 import { hashSupplierResponseToken } from "./procurement-response-tokens";
 
 const quotationSubmissionSchema = z.object({
@@ -260,6 +263,20 @@ export async function submitSupplierQuotation(
         supplierId: context.rfqMessage.supplierId,
       },
     }),
+    // Fire-and-forget — never let a confirmation email failure break the submission
+    sendSupplierConfirmationEmail({
+      buyerUserId: context.rfqMessage.campaign.request.userId,
+      currency: parsed.data.currency.trim().toUpperCase(),
+      leadTimeDays: normalizeOptionalInteger(parsed.data.leadTimeDays ?? null),
+      moq: normalizeOptionalInteger(parsed.data.moq ?? null),
+      notes: normalizeOptionalText(parsed.data.notes),
+      requestTitle: context.rfqMessage.campaign.request.title,
+      submittedBy: parsed.data.submittedBy.trim(),
+      submittedRole: normalizeOptionalText(parsed.data.submittedRole),
+      supplierEmail: context.rfqMessage.supplierEmail,
+      totalPrice: parsed.data.totalPrice.toFixed(2),
+      unitPrice: parsed.data.unitPrice.toFixed(2),
+    }).catch((err) => console.error("[confirm-email] Failed to send supplier confirmation", err)),
   ]);
 
   return {
@@ -267,6 +284,80 @@ export async function submitSupplierQuotation(
     quotationId: quotationRow.id,
     requestId: context.rfqMessage.campaign.requestId,
   };
+}
+
+function formatPrice(value: string | number, currency: string) {
+  return `${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+}
+
+async function sendSupplierConfirmationEmail(params: {
+  buyerUserId: string | null | undefined;
+  requestTitle: string;
+  submittedBy: string;
+  submittedRole: string | null;
+  supplierEmail: string;
+  unitPrice: string;
+  totalPrice: string;
+  currency: string;
+  leadTimeDays: number | null;
+  moq: number | null;
+  notes: string | null;
+}) {
+  if (!env.MAILGUN_API_KEY || !env.MAILGUN_DOMAIN) return;
+
+  const settings = params.buyerUserId
+    ? await getCompanySettings(params.buyerUserId).catch(() => null)
+    : null;
+
+  const buyerName = settings?.companyName ?? "the buyer";
+  const fromDomain = env.MAILGUN_DOMAIN;
+  const from = `Procora <noreply@${fromDomain}>`;
+  const replyTo = settings?.senderEmail ?? undefined;
+
+  const subject = `Your quotation has been received — ${params.requestTitle}`;
+
+  const rows = [
+    ["Unit price", formatPrice(params.unitPrice, params.currency)],
+    ["Total price", formatPrice(params.totalPrice, params.currency)],
+    ["Lead time", params.leadTimeDays != null ? `${params.leadTimeDays} day${params.leadTimeDays !== 1 ? "s" : ""}` : "—"],
+    ["MOQ", params.moq != null ? String(params.moq) : "—"],
+    ["Notes", params.notes ?? "—"],
+  ];
+
+  const textRows = rows.map(([label, val]) => `  ${label}: ${val}`).join("\n");
+  const htmlRows = rows
+    .map(([label, val]) => `<tr><td style="padding:6px 12px 6px 0; color:#6b7280; font-size:13px; white-space:nowrap;">${label}</td><td style="padding:6px 0; color:#111827; font-size:13px;">${val}</td></tr>`)
+    .join("");
+
+  const text = [
+    `Dear ${params.submittedBy}${params.submittedRole ? ` (${params.submittedRole})` : ""},`,
+    "",
+    `Thank you — your quotation for "${params.requestTitle}" has been successfully received by ${buyerName}.`,
+    "",
+    "Here is a summary of what you submitted:",
+    textRows,
+    "",
+    `${buyerName} will review your offer and get back to you if they have questions.`,
+    "",
+    "Best regards,",
+    `Procora — on behalf of ${buyerName}`,
+  ].join("\n");
+
+  const html = [
+    `<div style="font-family:Arial,sans-serif; background:#f6f7f9; padding:32px;">`,
+    `<div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:18px; padding:32px;">`,
+    `<p style="margin:0 0 8px; font-size:13px; color:#6b7280; font-family:monospace; text-transform:uppercase; letter-spacing:0.08em;">Quotation received</p>`,
+    `<h1 style="margin:0 0 24px; font-size:20px; font-weight:700; color:#111827; line-height:1.3;">${params.requestTitle}</h1>`,
+    `<p style="margin:0 0 20px; font-size:15px; color:#374151; line-height:1.6;">Dear <strong>${params.submittedBy}</strong>${params.submittedRole ? ` <span style="color:#6b7280;">(${params.submittedRole})</span>` : ""},</p>`,
+    `<p style="margin:0 0 24px; font-size:15px; color:#374151; line-height:1.6;">Your quotation has been successfully received by <strong>${buyerName}</strong>. Here is what we recorded:</p>`,
+    `<table style="width:100%; border-collapse:collapse; margin-bottom:24px;">${htmlRows}</table>`,
+    `<p style="margin:0 0 0; font-size:14px; color:#6b7280; line-height:1.6;">${buyerName} will review your offer and contact you if they have questions.</p>`,
+    `<hr style="margin:28px 0; border:none; border-top:1px solid #e5e7eb;" />`,
+    `<p style="margin:0; font-size:12px; color:#9ca3af;">Sent by Procora on behalf of ${buyerName}.</p>`,
+    `</div></div>`,
+  ].join("");
+
+  await sendRfqEmail({ from, html, replyTo, subject, text, to: params.supplierEmail });
 }
 
 export async function getBuyerQuotations(requestId: string) {
