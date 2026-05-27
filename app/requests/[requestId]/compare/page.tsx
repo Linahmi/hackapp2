@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, CheckCircle, FileText, Trophy, Timer, X } from "phosphor-react"
+import { ArrowLeft, CheckCircle, CurrencyDollar, FileText, Timer, Trophy, Warning, X } from "phosphor-react"
 import { ProcuraTopBar } from "@/app/components/procura-topbar"
 
 type Quotation = {
@@ -29,6 +29,7 @@ type Selection = {
   justification: string
   status: string
   selectedAt: string
+  quotation?: { supplier?: { name?: string } } | null
 } | null
 
 function fmt(value: string | number, currency: string) {
@@ -54,17 +55,20 @@ function Badge({ children, color }: { children: React.ReactNode; color: "green" 
 // ─── Selection modal ──────────────────────────────────────────────────────────
 
 function SelectionModal({
-  quotation,
+  existingSupplierName,
   onClose,
   onConfirm,
+  quotation,
   submitting,
 }: {
-  quotation: Quotation
+  existingSupplierName: string | null
   onClose: () => void
-  onConfirm: (justification: string) => void
+  onConfirm: (justification: string, force: boolean) => void
+  quotation: Quotation
   submitting: boolean
 }) {
   const [justification, setJustification] = useState("")
+  const isReplace = !!existingSupplierName
   const tooShort = justification.trim().length < 20
 
   return (
@@ -80,7 +84,7 @@ function SelectionModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--p-muted)" }}>
-              Select supplier
+              {isReplace ? "Replace selection" : "Select supplier"}
             </p>
             <h2 className="text-[18px] font-semibold tracking-[-0.02em]" style={{ color: "var(--p-ink)" }}>
               {quotation.supplierName}
@@ -94,6 +98,18 @@ function SelectionModal({
             <X size={18} />
           </button>
         </div>
+
+        {isReplace && (
+          <div
+            className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+            style={{ background: "#fef3c7", border: "1px solid #fde68a" }}
+          >
+            <Warning size={15} weight="fill" style={{ color: "#92400e", flexShrink: 0, marginTop: 1 }} />
+            <p className="text-[12px] leading-relaxed" style={{ color: "#92400e" }}>
+              <strong>{existingSupplierName}</strong> is currently selected. Confirming will supersede that selection — both decisions will remain in the audit trail.
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <label className="text-[12px] font-medium" style={{ color: "var(--p-ink-2)" }}>
@@ -115,19 +131,22 @@ function SelectionModal({
               "--tw-ring-color": "var(--p-accent)",
             }}
           />
-          <p className="text-[11px]" style={{ color: tooShort && justification.length > 0 ? "var(--p-rose)" : "var(--p-muted)" }}>
+          <p
+            className="text-[11px]"
+            style={{ color: tooShort && justification.length > 0 ? "var(--p-rose)" : "var(--p-muted)" }}
+          >
             {justification.trim().length}/20 characters minimum
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => onConfirm(justification.trim())}
+            onClick={() => onConfirm(justification.trim(), isReplace)}
             disabled={tooShort || submitting}
             className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
-            style={{ background: "var(--p-accent)" }}
+            style={{ background: isReplace ? "#b45309" : "var(--p-accent)" }}
           >
-            {submitting ? "Saving…" : "Confirm selection"}
+            {submitting ? "Saving…" : isReplace ? "Replace selection" : "Confirm selection"}
           </button>
           <button
             onClick={onClose}
@@ -182,7 +201,7 @@ export default function ComparePage() {
 
   useEffect(() => { load() }, [load])
 
-  async function handleConfirmSelection(justification: string) {
+  async function handleConfirmSelection(justification: string, force: boolean) {
     if (!modalQuotation) return
     setSubmitting(true)
     setSubmitError(null)
@@ -190,7 +209,7 @@ export default function ComparePage() {
       const res = await fetch(`/api/procurement/requests/${requestId}/select`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quotationId: modalQuotation.id, justification }),
+        body: JSON.stringify({ quotationId: modalQuotation.id, justification, force }),
       })
       if (!res.ok) {
         const data = (await res.json()) as { error?: string }
@@ -205,11 +224,13 @@ export default function ComparePage() {
     }
   }
 
-  // Derive highlights
-  const lowestTotal = quotations.length > 0
+  // Derive highlights — disabled when multiple currencies (comparing apples to oranges)
+  const currencies = [...new Set(quotations.map((q) => q.currency))]
+  const mixedCurrencies = currencies.length > 1
+  const lowestTotal = !mixedCurrencies && quotations.length > 1
     ? Math.min(...quotations.map((q) => Number(q.totalPrice)))
     : null
-  const fastestLead = quotations.filter((q) => q.leadTimeDays != null).length > 0
+  const fastestLead = quotations.filter((q) => q.leadTimeDays != null).length > 1
     ? Math.min(...quotations.filter((q) => q.leadTimeDays != null).map((q) => q.leadTimeDays!))
     : null
 
@@ -224,6 +245,11 @@ export default function ComparePage() {
   })
 
   const selectedQuotationId = selection?.quotationId
+
+  // Name of the currently selected supplier (for re-select modal warning)
+  const selectedSupplierName = selection
+    ? (quotations.find((q) => q.id === selectedQuotationId)?.supplierName ?? null)
+    : null
 
   return (
     <div className="min-h-svh" style={{ background: "var(--p-bg)" }}>
@@ -244,7 +270,7 @@ export default function ComparePage() {
             Quotation comparison
           </p>
           <h1 className="text-[24px] font-semibold tracking-[-0.03em]" style={{ color: "var(--p-ink)" }}>
-            Compare quotations
+            {quotations.length <= 1 ? "Quotation" : "Compare quotations"}
           </h1>
           {quotations.length > 0 && (
             <p className="mt-1 text-sm" style={{ color: "var(--p-ink-2)" }}>
@@ -262,12 +288,28 @@ export default function ComparePage() {
             <CheckCircle size={18} style={{ color: "var(--p-accent)", flexShrink: 0, marginTop: 1 }} />
             <div>
               <p className="text-[13px] font-semibold" style={{ color: "var(--p-accent)" }}>
-                Supplier selected
+                {selectedSupplierName ?? "Supplier"} selected
               </p>
               <p className="text-[12px] mt-0.5" style={{ color: "var(--p-ink-2)" }}>
                 {selection.justification}
               </p>
+              <p className="text-[11px] mt-1 font-mono" style={{ color: "var(--p-muted)" }}>
+                You can still replace this selection by clicking another card.
+              </p>
             </div>
+          </div>
+        )}
+
+        {/* Mixed currency warning */}
+        {mixedCurrencies && quotations.length > 0 && (
+          <div
+            className="flex items-center gap-2.5 rounded-xl px-4 py-3 mb-5"
+            style={{ background: "#fef3c7", border: "1px solid #fde68a" }}
+          >
+            <CurrencyDollar size={15} style={{ color: "#92400e", flexShrink: 0 }} />
+            <p className="text-[12px]" style={{ color: "#92400e" }}>
+              Quotations use multiple currencies ({currencies.join(", ")}) — "Best price" badge disabled. Compare manually.
+            </p>
           </div>
         )}
 
@@ -314,8 +356,8 @@ export default function ComparePage() {
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
               {sorted.map((q) => {
                 const isSelected = q.id === selectedQuotationId
-                const isBestPrice = lowestTotal !== null && Number(q.totalPrice) === lowestTotal && quotations.length > 1
-                const isFastestLead = fastestLead !== null && q.leadTimeDays === fastestLead && quotations.length > 1
+                const isBestPrice = lowestTotal !== null && Number(q.totalPrice) === lowestTotal
+                const isFastestLead = fastestLead !== null && q.leadTimeDays === fastestLead
 
                 return (
                   <div
@@ -344,10 +386,7 @@ export default function ComparePage() {
                     </div>
 
                     {/* Price block */}
-                    <div
-                      className="rounded-xl p-3 flex flex-col gap-1"
-                      style={{ background: "var(--p-surface-alt)" }}
-                    >
+                    <div className="rounded-xl p-3 flex flex-col gap-1" style={{ background: "var(--p-surface-alt)" }}>
                       <div className="flex justify-between text-[12px]" style={{ color: "var(--p-ink-2)" }}>
                         <span>Unit price</span>
                         <span className="font-mono font-medium" style={{ color: "var(--p-ink)" }}>
@@ -362,7 +401,7 @@ export default function ComparePage() {
                       </div>
                     </div>
 
-                    {/* Details */}
+                    {/* Details grid */}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                       <Detail label="Lead time" value={q.leadTimeDays != null ? `${q.leadTimeDays} day${q.leadTimeDays !== 1 ? "s" : ""}` : "—"} />
                       <Detail label="MOQ" value={q.moq != null ? q.moq.toLocaleString() : "—"} />
@@ -376,7 +415,6 @@ export default function ComparePage() {
                       </p>
                     )}
 
-                    {/* Attachment */}
                     {q.attachmentUrl && (
                       <a
                         href={q.attachmentUrl}
@@ -390,26 +428,22 @@ export default function ComparePage() {
                       </a>
                     )}
 
-                    {/* Action */}
-                    {!isSelected && (
-                      <button
-                        onClick={() => { setSubmitError(null); setModalQuotation(q) }}
-                        className="mt-auto w-full rounded-xl py-2.5 text-[12px] font-semibold transition-opacity hover:opacity-80"
-                        style={{
-                          background: "var(--p-ink)",
-                          color: "white",
-                        }}
-                      >
-                        Select this supplier
-                      </button>
-                    )}
-                    {isSelected && (
+                    {/* Action button */}
+                    {isSelected ? (
                       <div
                         className="mt-auto w-full rounded-xl py-2.5 text-[12px] font-semibold text-center"
                         style={{ background: "var(--p-accent-subtle)", color: "var(--p-accent)" }}
                       >
                         ✓ Selected
                       </div>
+                    ) : (
+                      <button
+                        onClick={() => { setSubmitError(null); setModalQuotation(q) }}
+                        className="mt-auto w-full rounded-xl py-2.5 text-[12px] font-semibold transition-opacity hover:opacity-80"
+                        style={{ background: "var(--p-ink)", color: "white" }}
+                      >
+                        {selection ? "Replace with this supplier" : "Select this supplier"}
+                      </button>
                     )}
                   </div>
                 )
@@ -426,6 +460,7 @@ export default function ComparePage() {
       {modalQuotation && (
         <SelectionModal
           quotation={modalQuotation}
+          existingSupplierName={selection ? selectedSupplierName : null}
           onClose={() => setModalQuotation(null)}
           onConfirm={handleConfirmSelection}
           submitting={submitting}

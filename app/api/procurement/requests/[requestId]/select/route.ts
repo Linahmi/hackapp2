@@ -1,15 +1,10 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth";
-import {
-  AUDIT_EVENT_TYPES,
-  createSupplierSelection,
-  getRequestById,
-  logAuditEvent,
-} from "@/db/queries";
+import { AUDIT_EVENT_TYPES, getRequestById, logAuditEvent } from "@/db/queries";
 import { db } from "@/db";
-import { quotation } from "@/db/procurement-schema";
+import { quotation, rfqCampaign, supplierSelection } from "@/db/procurement-schema";
 
 const bodySchema = z.object({
   quotationId: z.string().uuid("quotationId must be a valid UUID"),
@@ -18,6 +13,8 @@ const bodySchema = z.object({
     .trim()
     .min(20, "Justification must be at least 20 characters")
     .max(4000),
+  // force=true allows replacing an existing selection (UI shows a confirmation first)
+  force: z.boolean().optional().default(false),
 });
 
 export async function POST(
@@ -66,18 +63,90 @@ export async function POST(
     return Response.json({ error: "Quotation not found for this request" }, { status: 404 });
   }
 
-  const selection = await createSupplierSelection({
-    requestId,
-    quotationId: parsed.data.quotationId,
-    selectedBy: session.user.id,
-    justification: parsed.data.justification,
+  const selectionId = await db.transaction(async (tx) => {
+    // Check for an existing active selection (anything that isn't REJECTED)
+    const existing = await tx.query.supplierSelection.findFirst({
+      where: and(
+        eq(supplierSelection.requestId, requestId),
+        ne(supplierSelection.status, "REJECTED"),
+      ),
+      with: { quotation: { with: { supplier: true } } },
+    });
+
+    if (existing && !parsed.data.force) {
+      // Return a sentinel value — caller checks and returns 409
+      return { conflict: existing } as const;
+    }
+
+    if (existing) {
+      // Supersede the old selection — keep it for audit, mark REJECTED
+      await tx
+        .update(supplierSelection)
+        .set({ status: "REJECTED" })
+        .where(eq(supplierSelection.id, existing.id));
+
+      // Reset previously SELECTED quotation back to SUBMITTED
+      await tx
+        .update(quotation)
+        .set({ status: "SUBMITTED" })
+        .where(eq(quotation.id, existing.quotationId));
+    }
+
+    // Insert the new selection
+    const [newSelection] = await tx
+      .insert(supplierSelection)
+      .values({
+        requestId,
+        quotationId: parsed.data.quotationId,
+        selectedBy: session.user.id,
+        justification: parsed.data.justification,
+      })
+      .returning();
+
+    if (!newSelection) throw new Error("Failed to create selection");
+
+    // Mark chosen quotation as SELECTED
+    await tx
+      .update(quotation)
+      .set({ status: "SELECTED" })
+      .where(eq(quotation.id, parsed.data.quotationId));
+
+    // Mark all OTHER quotations in this request as NOT_SELECTED
+    const campaigns = await tx.query.rfqCampaign.findMany({
+      where: eq(rfqCampaign.requestId, requestId),
+      with: { quotations: { columns: { id: true } } },
+    });
+    const otherIds = campaigns
+      .flatMap((c) => c.quotations.map((q) => q.id))
+      .filter((id) => id !== parsed.data.quotationId);
+
+    if (otherIds.length > 0) {
+      await tx
+        .update(quotation)
+        .set({ status: "NOT_SELECTED" })
+        .where(inArray(quotation.id, otherIds));
+    }
+
+    return { id: newSelection.id } as const;
   });
 
-  // Mark the chosen quotation as SELECTED
-  await db
-    .update(quotation)
-    .set({ status: "SELECTED" })
-    .where(eq(quotation.id, parsed.data.quotationId));
+  // Handle conflict case (existing active selection, force not set)
+  if ("conflict" in selectionId) {
+    // selectionId.conflict is the existing active selection
+    const c = selectionId.conflict!;
+    return Response.json(
+      {
+        error: "A supplier has already been selected for this request",
+        conflict: {
+          selectionId: c.id,
+          supplierName: c.quotation?.supplier?.name ?? "Unknown",
+          selectedAt: c.selectedAt,
+          justification: c.justification,
+        },
+      },
+      { status: 409 },
+    );
+  }
 
   await logAuditEvent({
     requestId,
@@ -85,11 +154,12 @@ export async function POST(
     message: `Supplier selected: ${quotationRow.supplier.name}`,
     metadata: {
       quotationId: parsed.data.quotationId,
-      selectionId: selection.id,
+      selectionId: selectionId.id,
       supplierId: quotationRow.supplierId,
       supplierName: quotationRow.supplier.name,
+      superseded: parsed.data.force,
     },
   });
 
-  return Response.json({ ok: true, selectionId: selection.id });
+  return Response.json({ ok: true, selectionId: selectionId.id });
 }

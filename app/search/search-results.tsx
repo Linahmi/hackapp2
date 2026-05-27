@@ -1977,7 +1977,7 @@ function ReceivedQuotationsSection({
                 color: "white",
               }}
             >
-              Compare quotations →
+              {quotations.length === 1 ? "View quotation →" : "Compare quotations →"}
             </a>
           )}
           <button

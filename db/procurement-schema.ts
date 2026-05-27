@@ -122,6 +122,7 @@ export const quotationStatus = pgEnum("quotation_status", [
   "SUBMITTED",
   "REVIEWED",
   "SELECTED",
+  "NOT_SELECTED",
   "REJECTED",
 ]);
 
