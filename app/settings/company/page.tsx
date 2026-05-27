@@ -107,7 +107,12 @@ export default function CompanySettingsPage() {
 
   async function handleRemoveApprover(id: string) {
     const res = await fetch(`/api/approvers/${id}`, { method: "DELETE" })
-    if (res.ok) setApprovers((prev) => prev.filter((a) => a.id !== id))
+    if (res.ok) {
+      setApprovers((prev) => prev.filter((a) => a.id !== id))
+    } else {
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      setApproverError(data.error ?? "Failed to remove approver")
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {

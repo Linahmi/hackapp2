@@ -12,6 +12,8 @@ import {
 } from "@/db/queries";
 import { db } from "@/db";
 import { quotation, rfqCampaign, supplierSelection } from "@/db/procurement-schema";
+import { sendRfqEmail } from "@/lib/mailgun";
+import { env } from "@/lib/env";
 
 const bodySchema = z.object({
   quotationId: z.string().uuid("quotationId must be a valid UUID"),
@@ -196,8 +198,11 @@ export async function POST(
   // Create approval records and notify each approver
   await createApprovals(selectionId.id, requiredApprovers.map((a) => a.approverUserId));
 
+  const buyerName = session.user.name ?? session.user.email ?? "A buyer";
+  const appUrl = env.NEXT_PUBLIC_APP_URL ?? "";
+
   await Promise.all(
-    requiredApprovers.map((a) =>
+    requiredApprovers.flatMap((a) => [
       createNotification({
         userId: a.approverUserId,
         type: "APPROVAL_REQUESTED",
@@ -208,10 +213,29 @@ export async function POST(
           supplierName: quotationRow.supplier.name,
           totalPrice: quotationRow.totalPrice,
           currency: quotationRow.currency,
-          submittedBy: session.user.name ?? session.user.email ?? "A buyer",
+          submittedBy: buyerName,
         },
       }).catch((err) => console.error("[notification] Failed to notify approver", err)),
-    ),
+
+      sendRfqEmail({
+        to: a.approverUser.email,
+        subject: `Approval requested — ${quotationRow.supplier.name} (${Number(quotationRow.totalPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quotationRow.currency})`,
+        text: [
+          `Hi ${a.approverUser.name},`,
+          ``,
+          `${buyerName} has selected ${quotationRow.supplier.name} for "${procurementRequest.title}" and requires your approval.`,
+          ``,
+          `Amount: ${Number(quotationRow.totalPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quotationRow.currency}`,
+          ``,
+          `Review and approve or reject this selection at:`,
+          `${appUrl}/approvals`,
+          ``,
+          `— Procora`,
+        ].join("\n"),
+      }).then((result) => {
+        if (!result.ok) console.error("[email] Failed to email approver:", result.error);
+      }).catch((err) => console.error("[email] Failed to email approver", err)),
+    ]),
   );
 
   await logAuditEvent({
