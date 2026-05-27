@@ -24,6 +24,15 @@ const envSchema = z.object({
   // EU customers: https://api.eu.mailgun.net (auto-set by MAILGUN_REGION=eu)
   MAILGUN_API_BASE: z.string().url().optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+  // S3-compatible storage (AWS S3 or Cloudflare R2)
+  // If STORAGE_ENDPOINT is set, it overrides the default AWS endpoint (use for R2/MinIO).
+  STORAGE_ENDPOINT: z.string().url().optional(),
+  STORAGE_REGION: z.string().optional(),
+  STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  STORAGE_BUCKET: z.string().optional(),
+  // Public base URL for uploaded objects, e.g. https://pub-xxx.r2.dev or https://bucket.s3.amazonaws.com
+  STORAGE_PUBLIC_URL: z.string().url().optional(),
 });
 
 export const env = envSchema.parse({
@@ -42,4 +51,10 @@ export const env = envSchema.parse({
   MAILGUN_WEBHOOK_SIGNING_KEY: process.env.MAILGUN_WEBHOOK_SIGNING_KEY,
   MAILGUN_API_BASE: process.env.MAILGUN_API_BASE,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  STORAGE_ENDPOINT: process.env.STORAGE_ENDPOINT,
+  STORAGE_REGION: process.env.STORAGE_REGION,
+  STORAGE_ACCESS_KEY_ID: process.env.STORAGE_ACCESS_KEY_ID,
+  STORAGE_SECRET_ACCESS_KEY: process.env.STORAGE_SECRET_ACCESS_KEY,
+  STORAGE_BUCKET: process.env.STORAGE_BUCKET,
+  STORAGE_PUBLIC_URL: process.env.STORAGE_PUBLIC_URL,
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Props = {
   supplierName: string;
@@ -13,8 +13,16 @@ type SubmitState =
   | { status: "success" }
   | { message: string; status: "error" };
 
+type UploadState =
+  | { status: "idle" }
+  | { status: "uploading"; progress: number }
+  | { status: "done"; filename: string; url: string }
+  | { status: "error"; message: string };
+
 export function QuotationResponseForm({ supplierName, token }: Props) {
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
+  const [uploadState, setUploadState] = useState<UploadState>({ status: "idle" });
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     attachmentUrl: "",
     confirmationAccepted: false,
@@ -27,6 +35,53 @@ export function QuotationResponseForm({ supplierName, token }: Props) {
     totalPrice: "",
     unitPrice: "",
   });
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadState({ status: "uploading", progress: 0 });
+
+    try {
+      // Step 1: get a presigned PUT URL from our API
+      const presignRes = await fetch("/api/upload/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          sizeBytes: file.size,
+        }),
+      });
+      const presignData = (await presignRes.json()) as { uploadUrl?: string; fileUrl?: string; error?: string };
+      if (!presignRes.ok || !presignData.uploadUrl || !presignData.fileUrl) {
+        throw new Error(presignData.error ?? "Could not prepare upload.");
+      }
+
+      // Step 2: PUT the file directly to storage (no server intermediary)
+      setUploadState({ status: "uploading", progress: 50 });
+      const uploadRes = await fetch(presignData.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed. Please try again.");
+
+      setUploadState({ status: "done", filename: file.name, url: presignData.fileUrl });
+      setFormData((prev) => ({ ...prev, attachmentUrl: presignData.fileUrl! }));
+    } catch (err) {
+      setUploadState({
+        status: "error",
+        message: err instanceof Error ? err.message : "Upload failed.",
+      });
+    }
+  }
+
+  function handleRemoveFile() {
+    setUploadState({ status: "idle" });
+    setFormData((prev) => ({ ...prev, attachmentUrl: "" }));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -151,16 +206,61 @@ export function QuotationResponseForm({ supplierName, token }: Props) {
         />
       </label>
 
-      <label className="grid gap-2 text-sm text-slate-700">
-        <span className="font-medium">Attachment URL</span>
-        <input
-          type="url"
-          placeholder="Optional. Paste a secure link to your quotation PDF or document."
-          value={formData.attachmentUrl}
-          onChange={(event) => setFormData((prev) => ({ ...prev, attachmentUrl: event.target.value }))}
-          className="h-11 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
-        />
-      </label>
+      <div className="grid gap-2 text-sm text-slate-700">
+        <span className="font-medium">
+          Attachment{" "}
+          <span className="font-normal text-slate-400">(optional — PDF, JPEG, PNG up to 10 MB)</span>
+        </span>
+
+        {uploadState.status === "done" ? (
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-emerald-700 flex-shrink-0">
+              <path d="M13.5 9.5V12.5C13.5 13.0523 13.0523 13.5 12.5 13.5H3.5C2.94772 13.5 2.5 13.0523 2.5 12.5V9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M8 2.5V10M5.5 7.5L8 10L10.5 7.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="flex-1 text-sm text-emerald-900 truncate">{uploadState.filename}</span>
+            <button
+              type="button"
+              onClick={handleRemoveFile}
+              className="text-slate-400 hover:text-slate-600 transition-colors text-xs"
+            >
+              Remove
+            </button>
+          </div>
+        ) : uploadState.status === "uploading" ? (
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="animate-spin text-emerald-700 flex-shrink-0">
+              <path d="M8 2a6 6 0 1 0 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span className="text-sm text-slate-500">Uploading…</span>
+          </div>
+        ) : (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+              onChange={handleFileChange}
+              className="sr-only"
+              id="attachment-upload"
+            />
+            <label
+              htmlFor="attachment-upload"
+              className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-3 transition hover:border-emerald-500 hover:bg-emerald-50/40"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-slate-400 flex-shrink-0">
+                <path d="M13.5 9.5V12.5C13.5 13.0523 13.0523 13.5 12.5 13.5H3.5C2.94772 13.5 2.5 13.0523 2.5 12.5V9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <path d="M8 10V2.5M5.5 5L8 2.5L10.5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="text-sm text-slate-500">Click to upload your quotation document</span>
+            </label>
+          </>
+        )}
+
+        {uploadState.status === "error" && (
+          <p className="text-xs text-rose-600">{uploadState.message}</p>
+        )}
+      </div>
 
       <div className="grid gap-5 md:grid-cols-2">
         <label className="grid gap-2 text-sm text-slate-700">
