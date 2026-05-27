@@ -26,5 +26,12 @@ export async function GET(
   }
 
   const quotations = await getBuyerQuotations(requestId);
-  return Response.json({ quotations });
+  return Response.json({
+    quotations,
+    request: {
+      id: procurementRequest.id,
+      title: procurementRequest.title,
+      status: procurementRequest.status,
+    },
+  });
 }

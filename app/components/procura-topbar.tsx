@@ -74,6 +74,13 @@ export function ProcuraTopBar({ rfqId, title }: { rfqId?: string; title?: string
         {/* Nav actions */}
         <nav className="flex items-center gap-1">
           <Link
+            href="/requests"
+            className="px-3.5 py-[5px] text-[12px] font-medium rounded-lg no-underline transition-opacity hover:opacity-70"
+            style={{ color: "var(--p-ink-2)" }}
+          >
+            Requests
+          </Link>
+          <Link
             href="/"
             className="px-3.5 py-[5px] text-[12px] font-medium rounded-lg no-underline transition-opacity hover:opacity-85"
             style={{ background: "var(--p-ink)", color: "white" }}

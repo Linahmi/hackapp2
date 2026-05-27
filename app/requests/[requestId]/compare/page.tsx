@@ -32,6 +32,23 @@ type Selection = {
   quotation?: { supplier?: { name?: string } } | null
 } | null
 
+type RequestInfo = { id: string; title: string; status: string } | null
+
+const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  DRAFT:             { label: "Draft",             bg: "var(--p-surface-alt)",   color: "var(--p-muted)" },
+  SEARCHING:         { label: "Searching",          bg: "#dbeafe",                color: "#1e40af" },
+  MATCHED:           { label: "Matched",            bg: "#dbeafe",                color: "#1e40af" },
+  READY:             { label: "Ready to send",      bg: "#dbeafe",                color: "#1e40af" },
+  SENT:              { label: "Sent",               bg: "#dbeafe",                color: "#1e40af" },
+  RFQ_SENT:          { label: "RFQ sent",           bg: "#dbeafe",                color: "#1e40af" },
+  QUOTES_RECEIVED:   { label: "Quotes received",    bg: "#fef3c7",                color: "#92400e" },
+  UNDER_REVIEW:      { label: "Under review",       bg: "#fef3c7",                color: "#92400e" },
+  SUPPLIER_SELECTED: { label: "Pending approval",   bg: "#ede9fe",                color: "#5b21b6" },
+  APPROVED:          { label: "Approved",           bg: "var(--p-accent-subtle)", color: "var(--p-accent)" },
+  COMPLETED:         { label: "Completed",          bg: "var(--p-surface-alt)",   color: "var(--p-muted)" },
+  CANCELLED:         { label: "Cancelled",          bg: "#fee2e2",                color: "#991b1b" },
+}
+
 function fmt(value: string | number, currency: string) {
   return `${Number(value).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -169,6 +186,7 @@ export default function ComparePage() {
 
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [selection, setSelection] = useState<Selection>(null)
+  const [requestInfo, setRequestInfo] = useState<RequestInfo>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -186,8 +204,9 @@ export default function ComparePage() {
         fetch(`/api/procurement/requests/${requestId}/selection`),
       ])
       if (!qRes.ok) throw new Error("Failed to load quotations")
-      const qData = (await qRes.json()) as { quotations: Quotation[] }
+      const qData = (await qRes.json()) as { quotations: Quotation[]; request?: RequestInfo }
       setQuotations(qData.quotations ?? [])
+      if (qData.request) setRequestInfo(qData.request)
       if (sRes.ok) {
         const sData = (await sRes.json()) as { selection: Selection }
         setSelection(sData.selection)
@@ -269,9 +288,22 @@ export default function ComparePage() {
           <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--p-muted)" }}>
             Quotation comparison
           </p>
-          <h1 className="text-[24px] font-semibold tracking-[-0.03em]" style={{ color: "var(--p-ink)" }}>
-            {quotations.length <= 1 ? "Quotation" : "Compare quotations"}
-          </h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-[24px] font-semibold tracking-[-0.03em]" style={{ color: "var(--p-ink)" }}>
+              {requestInfo?.title ?? (quotations.length <= 1 ? "Quotation" : "Compare quotations")}
+            </h1>
+            {requestInfo?.status && STATUS_BADGE[requestInfo.status] && (
+              <span
+                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold flex-shrink-0"
+                style={{
+                  background: STATUS_BADGE[requestInfo.status].bg,
+                  color: STATUS_BADGE[requestInfo.status].color,
+                }}
+              >
+                {STATUS_BADGE[requestInfo.status].label}
+              </span>
+            )}
+          </div>
           {quotations.length > 0 && (
             <p className="mt-1 text-sm" style={{ color: "var(--p-ink-2)" }}>
               {quotations.length} quotation{quotations.length !== 1 ? "s" : ""} received

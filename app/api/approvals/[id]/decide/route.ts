@@ -61,7 +61,10 @@ export async function POST(
     },
   });
 
-  // Advance procurementRequest status when the selection is fully approved
+  // Advance procurementRequest status when the selection is fully approved.
+  // Rejection does NOT regress or advance the request status; selection-level state
+  // captures it. The buyer sees the rejection via notification, re-selects, and the
+  // new selection triggers a fresh SUPPLIER_SELECTED → APPROVED cycle.
   if (sel?.status === "APPROVED" && sel.requestId) {
     advanceRequestStatus(sel.requestId, "APPROVED", ["SUPPLIER_SELECTED"])
       .catch((err) => console.error("[status] Failed to advance request to APPROVED", err));
