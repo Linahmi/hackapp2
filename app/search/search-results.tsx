@@ -1950,11 +1950,13 @@ function ReceivedQuotationsSection({
   loading,
   onRefresh,
   quotations,
+  requestId,
 }: {
   error: string | null
   loading: boolean
   onRefresh: () => void
   quotations: ProcurementReceivedQuotation[]
+  requestId: string | undefined
 }) {
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
@@ -1965,14 +1967,28 @@ function ReceivedQuotationsSection({
             Real supplier submissions linked to this RFQ campaign.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-        >
-          {loading ? <SpinnerGap size={12} weight="bold" className="animate-spin" /> : null}
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {quotations.length >= 1 && requestId && (
+            <a
+              href={`/requests/${requestId}/compare`}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+              style={{
+                background: "var(--p-accent)",
+                color: "white",
+              }}
+            >
+              Compare quotations →
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+          >
+            {loading ? <SpinnerGap size={12} weight="bold" className="animate-spin" /> : null}
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -2115,6 +2131,7 @@ function MultiRFQStep({
         loading={receivedQuotationsLoading}
         onRefresh={onRefreshQuotations}
         quotations={receivedQuotations}
+        requestId={dbMeta?.requestId}
       />
 
       {/* Supplier tab switcher */}

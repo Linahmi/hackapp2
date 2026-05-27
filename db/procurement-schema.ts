@@ -125,6 +125,15 @@ export const quotationStatus = pgEnum("quotation_status", [
   "REJECTED",
 ]);
 
+/**
+ * Approval state for a buyer's supplier selection decision.
+ */
+export const selectionStatus = pgEnum("selection_status", [
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "REJECTED",
+]);
+
 // ─────────────────────────────────────────────────────────────
 // Tables
 // ─────────────────────────────────────────────────────────────
@@ -569,6 +578,50 @@ export const companySettingsRelations = relations(companySettings, ({ one }) => 
   }),
 }));
 
+/**
+ * Buyer's final supplier selection decision for a procurement request.
+ * A single requestId can have multiple rows over time (e.g. re-selections),
+ * but only one row with status != REJECTED is meaningful at a time.
+ */
+export const supplierSelection = pgTable(
+  "supplier_selection",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => procurementRequest.id, { onDelete: "cascade" }),
+    quotationId: uuid("quotation_id")
+      .notNull()
+      .references(() => quotation.id, { onDelete: "restrict" }),
+    selectedBy: text("selected_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    justification: text("justification").notNull(),
+    selectedAt: timestamp("selected_at").defaultNow().notNull(),
+    status: selectionStatus("status").notNull().default("PENDING_APPROVAL"),
+  },
+  (t) => [
+    index("supplier_selection_request_id_idx").on(t.requestId),
+    index("supplier_selection_quotation_id_idx").on(t.quotationId),
+    index("supplier_selection_status_idx").on(t.status),
+  ],
+);
+
+export const supplierSelectionRelations = relations(supplierSelection, ({ one }) => ({
+  request: one(procurementRequest, {
+    fields: [supplierSelection.requestId],
+    references: [procurementRequest.id],
+  }),
+  quotation: one(quotation, {
+    fields: [supplierSelection.quotationId],
+    references: [quotation.id],
+  }),
+  selectedByUser: one(user, {
+    fields: [supplierSelection.selectedBy],
+    references: [user.id],
+  }),
+}));
+
 // ─────────────────────────────────────────────────────────────
 // Type exports
 // ─────────────────────────────────────────────────────────────
@@ -602,6 +655,10 @@ export type NewCompanySettings = typeof companySettings.$inferInsert;
 
 export type Notification = typeof notification.$inferSelect;
 export type NewNotification = typeof notification.$inferInsert;
+
+export type SupplierSelection = typeof supplierSelection.$inferSelect;
+export type NewSupplierSelection = typeof supplierSelection.$inferInsert;
+export type SelectionStatus = (typeof selectionStatus.enumValues)[number];
 
 // Enum value unions (use these in application code instead of raw strings)
 export type RequestStatus = (typeof requestStatus.enumValues)[number];

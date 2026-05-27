@@ -384,6 +384,7 @@ export async function getBuyerQuotations(requestId: string) {
   const rows = await listQuotationsForRequest(requestId);
 
   return rows.map((row) => ({
+    attachmentUrl: row.attachmentUrl,
     campaignId: row.rfqCampaignId,
     currency: row.currency,
     id: row.id,
@@ -394,6 +395,7 @@ export async function getBuyerQuotations(requestId: string) {
     submittedAt: row.submittedAt.toISOString(),
     submittedBy: row.submittedBy,
     submittedRole: row.submittedRole,
+    supplierId: row.supplierId,
     supplierName: row.supplier.name,
     totalPrice: row.totalPrice,
     unitPrice: row.unitPrice,
