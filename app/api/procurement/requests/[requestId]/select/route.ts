@@ -130,23 +130,22 @@ export async function POST(
     .flatMap((c) => c.quotations.map((q) => q.id))
     .filter((id) => id !== parsed.data.quotationId);
 
-  const quotationUpdates = [
-    db
-      .update(quotation)
-      .set({ status: "SELECTED" })
-      .where(eq(quotation.id, parsed.data.quotationId)),
-  ];
+  const selectedQuotationUpdate = db
+    .update(quotation)
+    .set({ status: "SELECTED" })
+    .where(eq(quotation.id, parsed.data.quotationId));
 
-  if (otherIds.length > 0) {
-    quotationUpdates.push(
+  if (otherIds.length === 0) {
+    await selectedQuotationUpdate;
+  } else {
+    await db.batch([
+      selectedQuotationUpdate,
       db
         .update(quotation)
         .set({ status: "NOT_SELECTED" })
         .where(inArray(quotation.id, otherIds)),
-    );
+    ]);
   }
-
-  await db.batch(quotationUpdates);
   const selectionId = newSelection.id;
 
   await logAuditEvent({
