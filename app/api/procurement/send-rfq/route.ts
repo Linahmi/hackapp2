@@ -59,6 +59,7 @@ export async function POST(request: Request) {
     const companySettings = await getCompanySettings(session.user.id).catch(() => null);
 
     const result = await sendProcurementRfqCampaign({
+      baseUrl: new URL(request.url).origin,
       buyer: {
         buyerCompanyName:
           parsed.data.buyerCompanyName ??

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, CheckCircle, CurrencyDollar, FileText, Timer, Trophy, Warning, X } from "phosphor-react"
+import { ArrowLeft, CheckCircle, CurrencyDollar, DownloadSimple, FileText, Timer, Trophy, Warning, X } from "phosphor-react"
 import { ProcuraTopBar } from "@/app/components/procura-topbar"
 
 type Quotation = {
@@ -309,6 +309,18 @@ export default function ComparePage() {
               {quotations.length} quotation{quotations.length !== 1 ? "s" : ""} received
             </p>
           )}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <a
+              href={`/requests/${requestId}/export`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-medium transition-colors hover:text-foreground"
+              style={{ borderColor: "var(--p-border)", color: "var(--p-ink-2)" }}
+            >
+              <DownloadSimple size={13} weight="bold" />
+              Export workflow
+            </a>
+          </div>
         </div>
 
         {/* Already selected banner */}

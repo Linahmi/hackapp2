@@ -107,7 +107,7 @@ export default async function SupplierResponsePage(
           </div>
         </section>
 
-        <section className="grid gap-5 self-start">
+        <section className="grid min-w-0 gap-5 self-start">
           <div className="rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm">
             <h2 className="text-2xl font-semibold text-slate-950">Submit your quotation</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">

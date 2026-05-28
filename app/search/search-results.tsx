@@ -1980,6 +1980,16 @@ function ReceivedQuotationsSection({
               {quotations.length === 1 ? "View quotation →" : "Compare quotations →"}
             </a>
           )}
+          {requestId && (
+            <a
+              href={`/requests/${requestId}/export`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+            >
+              Export workflow
+            </a>
+          )}
           <button
             type="button"
             onClick={onRefresh}

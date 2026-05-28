@@ -140,79 +140,94 @@ export function QuotationResponseForm({ supplierName, token }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-5 rounded-[28px] border border-slate-200 bg-white p-8 shadow-sm">
-      <div className="grid gap-2 md:grid-cols-3 md:items-end">
+    <form
+      onSubmit={handleSubmit}
+      className="mx-auto grid w-full max-w-4xl gap-5 overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+    >
+      <div className="grid min-w-0 grid-cols-1 gap-5 md:grid-cols-3">
+        <div className="min-w-0">
+          <label className="grid gap-2 text-sm text-slate-700">
+            <span className="font-medium">Unit price</span>
+            <input
+              required
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.unitPrice}
+              onChange={(event) => setFormData((prev) => ({ ...prev, unitPrice: event.target.value }))}
+              className="h-11 w-full min-w-0 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
+            />
+          </label>
+        </div>
+        <div className="min-w-0">
+          <label className="grid gap-2 text-sm text-slate-700">
+            <span className="font-medium">Total price</span>
+            <input
+              required
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.totalPrice}
+              onChange={(event) => setFormData((prev) => ({ ...prev, totalPrice: event.target.value }))}
+              className="h-11 w-full min-w-0 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
+            />
+          </label>
+        </div>
+        <div className="min-w-0">
+          <label className="grid gap-2 text-sm text-slate-700">
+            <span className="font-medium">Currency</span>
+            <input
+              required
+              value={formData.currency}
+              onChange={(event) => setFormData((prev) => ({ ...prev, currency: event.target.value.toUpperCase() }))}
+              className="h-11 w-full min-w-0 rounded-xl border border-slate-300 px-3 uppercase outline-none transition focus:border-emerald-700"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="grid min-w-0 grid-cols-1 gap-5 md:grid-cols-2">
+        <div className="min-w-0">
+          <label className="grid gap-2 text-sm text-slate-700">
+            <span className="font-medium">Lead time in days</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={formData.leadTimeDays}
+              onChange={(event) => setFormData((prev) => ({ ...prev, leadTimeDays: event.target.value }))}
+              className="h-11 w-full min-w-0 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
+            />
+          </label>
+        </div>
+        <div className="min-w-0">
+          <label className="grid gap-2 text-sm text-slate-700">
+            <span className="font-medium">MOQ</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={formData.moq}
+              onChange={(event) => setFormData((prev) => ({ ...prev, moq: event.target.value }))}
+              className="h-11 w-full min-w-0 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="min-w-0">
         <label className="grid gap-2 text-sm text-slate-700">
-          <span className="font-medium">Unit price</span>
-          <input
-            required
-            type="number"
-            min="0"
-            step="0.01"
-            value={formData.unitPrice}
-            onChange={(event) => setFormData((prev) => ({ ...prev, unitPrice: event.target.value }))}
-            className="h-11 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
-          />
-        </label>
-        <label className="grid gap-2 text-sm text-slate-700">
-          <span className="font-medium">Total price</span>
-          <input
-            required
-            type="number"
-            min="0"
-            step="0.01"
-            value={formData.totalPrice}
-            onChange={(event) => setFormData((prev) => ({ ...prev, totalPrice: event.target.value }))}
-            className="h-11 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
-          />
-        </label>
-        <label className="grid gap-2 text-sm text-slate-700">
-          <span className="font-medium">Currency</span>
-          <input
-            required
-            value={formData.currency}
-            onChange={(event) => setFormData((prev) => ({ ...prev, currency: event.target.value.toUpperCase() }))}
-            className="h-11 rounded-xl border border-slate-300 px-3 uppercase outline-none transition focus:border-emerald-700"
+          <span className="font-medium">Comments or notes</span>
+          <textarea
+            rows={5}
+            value={formData.notes}
+            onChange={(event) => setFormData((prev) => ({ ...prev, notes: event.target.value }))}
+            className="w-full min-w-0 rounded-2xl border border-slate-300 px-3 py-3 outline-none transition focus:border-emerald-700"
           />
         </label>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <label className="grid gap-2 text-sm text-slate-700">
-          <span className="font-medium">Lead time in days</span>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={formData.leadTimeDays}
-            onChange={(event) => setFormData((prev) => ({ ...prev, leadTimeDays: event.target.value }))}
-            className="h-11 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
-          />
-        </label>
-        <label className="grid gap-2 text-sm text-slate-700">
-          <span className="font-medium">MOQ</span>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={formData.moq}
-            onChange={(event) => setFormData((prev) => ({ ...prev, moq: event.target.value }))}
-            className="h-11 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
-          />
-        </label>
-      </div>
-
-      <label className="grid gap-2 text-sm text-slate-700">
-        <span className="font-medium">Comments or notes</span>
-        <textarea
-          rows={5}
-          value={formData.notes}
-          onChange={(event) => setFormData((prev) => ({ ...prev, notes: event.target.value }))}
-          className="rounded-2xl border border-slate-300 px-3 py-3 outline-none transition focus:border-emerald-700"
-        />
-      </label>
-
-      <div className="grid gap-2 text-sm text-slate-700">
+      <div className="grid min-w-0 gap-2 text-sm text-slate-700">
         <span className="font-medium">
           Attachment{" "}
           <span className="font-normal text-slate-400">(optional — PDF, JPEG, PNG up to 10 MB)</span>
@@ -252,7 +267,7 @@ export function QuotationResponseForm({ supplierName, token }: Props) {
             />
             <label
               htmlFor="attachment-upload"
-              className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-3 transition hover:border-emerald-500 hover:bg-emerald-50/40"
+              className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-3 transition hover:border-emerald-500 hover:bg-emerald-50/40"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-slate-400 flex-shrink-0">
                 <path d="M13.5 9.5V12.5C13.5 13.0523 13.0523 13.5 12.5 13.5H3.5C2.94772 13.5 2.5 13.0523 2.5 12.5V9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -268,24 +283,28 @@ export function QuotationResponseForm({ supplierName, token }: Props) {
         )}
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <label className="grid gap-2 text-sm text-slate-700">
-          <span className="font-medium">Submitted by full name</span>
-          <input
-            required
-            value={formData.submittedBy}
-            onChange={(event) => setFormData((prev) => ({ ...prev, submittedBy: event.target.value }))}
-            className="h-11 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
-          />
-        </label>
-        <label className="grid gap-2 text-sm text-slate-700">
-          <span className="font-medium">Role or title</span>
-          <input
-            value={formData.submittedRole}
-            onChange={(event) => setFormData((prev) => ({ ...prev, submittedRole: event.target.value }))}
-            className="h-11 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
-          />
-        </label>
+      <div className="grid min-w-0 grid-cols-1 gap-5 md:grid-cols-2">
+        <div className="min-w-0">
+          <label className="grid gap-2 text-sm text-slate-700">
+            <span className="font-medium">Submitted by full name</span>
+            <input
+              required
+              value={formData.submittedBy}
+              onChange={(event) => setFormData((prev) => ({ ...prev, submittedBy: event.target.value }))}
+              className="h-11 w-full min-w-0 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
+            />
+          </label>
+        </div>
+        <div className="min-w-0">
+          <label className="grid gap-2 text-sm text-slate-700">
+            <span className="font-medium">Role or title</span>
+            <input
+              value={formData.submittedRole}
+              onChange={(event) => setFormData((prev) => ({ ...prev, submittedRole: event.target.value }))}
+              className="h-11 w-full min-w-0 rounded-xl border border-slate-300 px-3 outline-none transition focus:border-emerald-700"
+            />
+          </label>
+        </div>
       </div>
 
       <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">

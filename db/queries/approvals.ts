@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "../index";
 import {
@@ -63,6 +63,22 @@ export async function listPendingApprovalsForApprover(
 export async function getApprovalById(id: string): Promise<Approval | null> {
   const row = await db.query.approval.findFirst({ where: eq(approval.id, id) });
   return row ?? null;
+}
+
+export async function listApprovalsForSelection(selectionId: string) {
+  return db.query.approval.findMany({
+    where: eq(approval.selectionId, selectionId),
+    orderBy: (t, { asc }) => [asc(t.createdAt)],
+    with: {
+      approver: {
+        columns: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
 }
 
 export async function decideApproval(

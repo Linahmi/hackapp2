@@ -29,9 +29,9 @@ type BuyerContext = {
   signature?: string | null;
 };
 
-function buildResponseUrl(rawToken: string) {
-  const baseUrl = env.NEXT_PUBLIC_APP_URL ?? env.BETTER_AUTH_URL;
-  return `${baseUrl.replace(/\/$/, "")}/respond/${rawToken}`;
+function buildResponseUrl(rawToken: string, baseUrl?: string | null) {
+  const resolvedBaseUrl = baseUrl ?? env.NEXT_PUBLIC_APP_URL ?? env.BETTER_AUTH_URL;
+  return `${resolvedBaseUrl.replace(/\/$/, "")}/respond/${rawToken}`;
 }
 
 function buildEmailText(
@@ -109,11 +109,12 @@ function buildEmailHtml(
 }
 
 export async function sendProcurementRfqCampaign(input: {
+  baseUrl?: string | null;
   buyer: BuyerContext;
   messages: CampaignMessageInput[];
   requestId: string;
 }) {
-  const { buyer, messages, requestId } = input;
+  const { baseUrl, buyer, messages, requestId } = input;
 
   const campaign = await createCampaign({ requestId });
 
@@ -162,7 +163,7 @@ export async function sendProcurementRfqCampaign(input: {
         tokenHash,
       });
 
-      const responseUrl = buildResponseUrl(rawToken);
+      const responseUrl = buildResponseUrl(rawToken, baseUrl);
 
       await logAuditEvent({
         requestId,
