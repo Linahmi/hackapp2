@@ -14,7 +14,7 @@ import {
 } from "@/db/queries";
 import { db } from "@/db";
 import { quotation, rfqCampaign, supplierSelection } from "@/db/procurement-schema";
-import { sendRfqEmail } from "@/lib/mailgun";
+import { buildMailgunSender, sendRfqEmail } from "@/lib/mailgun";
 import { env } from "@/lib/env";
 
 const bodySchema = z.object({
@@ -215,8 +215,7 @@ export async function POST(
   const fromName = [companySettings?.senderName, companySettings?.companyName]
     .filter(Boolean)
     .join(" — ") || buyerName;
-  const fromAddress = env.MAILGUN_DOMAIN ? `noreply@${env.MAILGUN_DOMAIN}` : undefined;
-  const emailFrom = fromAddress ? `${fromName} <${fromAddress}>` : undefined;
+  const emailFrom = buildMailgunSender(fromName);
   const approvalsUrl = `${(env.NEXT_PUBLIC_APP_URL ?? env.BETTER_AUTH_URL).replace(/\/$/, "")}/approvals`;
 
   await Promise.all(

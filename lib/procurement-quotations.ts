@@ -18,8 +18,11 @@ import {
   rfqMessage,
   supplierResponseToken,
 } from "@/db/procurement-schema";
-import { sendRfqEmail } from "@/lib/mailgun";
-import { env } from "@/lib/env";
+import {
+  buildMailgunSender,
+  isMailgunConfigured,
+  sendRfqEmail,
+} from "@/lib/mailgun";
 import { hashSupplierResponseToken } from "./procurement-response-tokens";
 
 const quotationSubmissionSchema = z.object({
@@ -331,17 +334,15 @@ async function sendSupplierConfirmationEmail(params: {
   moq: number | null;
   notes: string | null;
 }) {
-  if (!env.MAILGUN_API_KEY || !env.MAILGUN_DOMAIN) return;
+  if (!isMailgunConfigured()) return;
 
   const settings = params.buyerUserId
     ? await getCompanySettings(params.buyerUserId).catch(() => null)
     : null;
 
   const buyerName = settings?.companyName ?? "the buyer";
-  const fromDomain = env.MAILGUN_DOMAIN;
   const fromName = [settings?.senderName, settings?.companyName].filter(Boolean).join(" — ") || "Procora";
-  const fromAddress = fromDomain ? `noreply@${fromDomain}` : undefined;
-  const from = fromAddress ? `${fromName} <${fromAddress}>` : undefined;
+  const from = buildMailgunSender(fromName);
   const replyTo = settings?.senderEmail ?? undefined;
 
   const subject = `Your quotation has been received — ${params.requestTitle}`;

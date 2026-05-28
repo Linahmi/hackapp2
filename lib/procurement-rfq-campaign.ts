@@ -10,7 +10,7 @@ import {
   updateRequestStatus,
 } from "@/db/queries";
 import { env } from "@/lib/env";
-import { sendRfqEmail } from "@/lib/mailgun";
+import { buildMailgunSender, sendRfqEmail } from "@/lib/mailgun";
 import { createSupplierResponseToken as createResponseToken } from "./procurement-response-tokens";
 
 type CampaignMessageInput = {
@@ -183,8 +183,7 @@ export async function sendProcurementRfqCampaign(input: {
       const fromName = [buyer.buyerName, buyer.buyerCompanyName]
         .filter(Boolean)
         .join(" — ") || "Procora RFQ";
-      const fromAddress = env.MAILGUN_DOMAIN ? `noreply@${env.MAILGUN_DOMAIN}` : undefined;
-      const from = fromAddress ? `${fromName} <${fromAddress}>` : undefined;
+      const from = buildMailgunSender(fromName);
 
       const result = await sendRfqEmail({
         from,

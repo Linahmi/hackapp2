@@ -1,5 +1,23 @@
 import { z } from "zod";
 
+const optionalTrimmedString = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().optional());
+
+const optionalTrimmedUrl = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().url().optional());
+
+const optionalMailgunRegion = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.enum(["us", "eu"]).optional());
+
 const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -15,14 +33,14 @@ const envSchema = z.object({
   EXA_API_KEY: z.string().min(1),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1),
   // Optional — populated when Mailgun is integrated
-  MAILGUN_API_KEY: z.string().optional(),
-  MAILGUN_DOMAIN: z.string().optional(),
-  MAILGUN_FROM: z.string().optional(),
-  MAILGUN_REGION: z.enum(["us", "eu"]).optional(),
+  MAILGUN_API_KEY: optionalTrimmedString,
+  MAILGUN_DOMAIN: optionalTrimmedString,
+  MAILGUN_FROM: optionalTrimmedString,
+  MAILGUN_REGION: optionalMailgunRegion,
   // Mailgun webhook signing key (Settings → Webhooks in Mailgun dashboard)
-  MAILGUN_WEBHOOK_SIGNING_KEY: z.string().optional(),
+  MAILGUN_WEBHOOK_SIGNING_KEY: optionalTrimmedString,
   // EU customers: https://api.eu.mailgun.net (auto-set by MAILGUN_REGION=eu)
-  MAILGUN_API_BASE: z.string().url().optional(),
+  MAILGUN_API_BASE: optionalTrimmedUrl,
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   // S3-compatible storage (AWS S3 or Cloudflare R2)
   // If STORAGE_ENDPOINT is set, it overrides the default AWS endpoint (use for R2/MinIO).
@@ -47,7 +65,7 @@ export const env = envSchema.parse({
   MAILGUN_API_KEY: process.env.MAILGUN_API_KEY,
   MAILGUN_DOMAIN: process.env.MAILGUN_DOMAIN,
   MAILGUN_FROM: process.env.MAILGUN_FROM,
-  MAILGUN_REGION: process.env.MAILGUN_REGION as "us" | "eu" | undefined,
+  MAILGUN_REGION: process.env.MAILGUN_REGION,
   MAILGUN_WEBHOOK_SIGNING_KEY: process.env.MAILGUN_WEBHOOK_SIGNING_KEY,
   MAILGUN_API_BASE: process.env.MAILGUN_API_BASE,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
