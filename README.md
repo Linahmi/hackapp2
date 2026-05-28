@@ -23,9 +23,10 @@ bun run dev
 | `EXA_API_KEY` | ✅ | Exa supplier search |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | ✅ | Gemini for structured extraction |
 | `MAILGUN_API_KEY` | optional | Transactional email |
-| `MAILGUN_DOMAIN` | optional | Sending domain |
+| `MAILGUN_DOMAIN` | optional | Verified sending domain, e.g. `mg.example.com` |
 | `MAILGUN_FROM` | optional | Default FROM address |
-| `MAILGUN_REGION` | optional | `us` or `eu` |
+| `MAILGUN_REGION` | optional | `us` or `eu`; set `eu` for EU Mailgun accounts |
+| `MAILGUN_API_BASE` | optional | Override API endpoint, e.g. `https://api.eu.mailgun.net` |
 | `STORAGE_ENDPOINT` | optional | R2/MinIO endpoint URL |
 | `STORAGE_REGION` | optional | `auto` for R2, or AWS region |
 | `STORAGE_ACCESS_KEY_ID` | optional | S3/R2 access key |
