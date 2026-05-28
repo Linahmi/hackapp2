@@ -1791,11 +1791,12 @@ function ProcoraPanel({
     const manualEmail = manualEmails[idx]?.trim() ?? ""
     const effectiveEmail = detectedEmail ?? (isValidEmail(manualEmail) ? manualEmail : null)
     const sendState = rfqSendStates[idx]
-    return { idx, supplierId, detectedEmail, manualEmail, effectiveEmail, sendState }
+    const hasDraft = Boolean(quote)
+    return { idx, supplierId, detectedEmail, manualEmail, effectiveEmail, sendState, hasDraft }
   })
 
-  // Suppliers we can actually send to (have DB id + at least one valid email)
-  const sendableRows = rows.filter((r) => r.supplierId && r.effectiveEmail)
+  // Suppliers we can actually send to (have DB id + generated RFQ draft + at least one valid email)
+  const sendableRows = rows.filter((r) => r.supplierId && r.effectiveEmail && r.hasDraft)
 
   const sentCount = rows.filter((r) => r.sendState?.status === "sent").length
   const failedCount = rows.filter((r) => r.sendState?.status === "failed").length
@@ -1861,10 +1862,11 @@ function ProcoraPanel({
 
       {/* Per-supplier rows */}
       <div className="flex flex-col gap-1.5">
-        {rows.map(({ idx, supplierId, detectedEmail, manualEmail, effectiveEmail, sendState }) => {
+        {rows.map(({ idx, supplierId, detectedEmail, manualEmail, effectiveEmail, sendState, hasDraft }) => {
           const name = providers[idx]?.name ?? `Supplier ${idx + 1}`
           const isSent = sendState?.status === "sent"
           const isFailed = sendState?.status === "failed"
+          const missingDraft = !hasDraft
 
           return (
             <div key={idx} className="flex items-center gap-2.5 min-w-0">
@@ -1875,10 +1877,13 @@ function ProcoraPanel({
               {isFailed && (
                 <WarningCircle size={13} weight="duotone" className="flex-shrink-0" style={{ color: "var(--p-rose)" }} />
               )}
-              {!isSent && !isFailed && effectiveEmail && (
+              {missingDraft && !isSent && !isFailed && (
+                <WarningCircle size={13} weight="duotone" className="flex-shrink-0" style={{ color: "var(--p-amber)" }} />
+              )}
+              {!isSent && !isFailed && effectiveEmail && !missingDraft && (
                 <CheckCircle size={13} weight="fill" className="flex-shrink-0" style={{ color: "var(--p-accent)" }} />
               )}
-              {!isSent && !isFailed && !effectiveEmail && (
+              {!isSent && !isFailed && !effectiveEmail && !missingDraft && (
                 <span
                   className="w-[13px] h-[13px] rounded-full flex-shrink-0 border-2"
                   style={{ borderColor: "var(--p-faint)" }}
@@ -1901,6 +1906,10 @@ function ProcoraPanel({
               ) : !supplierId ? (
                 <span className="text-xs italic" style={{ color: "var(--p-faint)" }}>
                   unavailable
+                </span>
+              ) : missingDraft ? (
+                <span className="text-xs italic" style={{ color: "var(--p-amber)" }}>
+                  RFQ draft missing
                 </span>
               ) : isSent ? (
                 <span className="text-xs truncate min-w-0" style={{ color: "var(--p-muted)" }}>
@@ -1931,12 +1940,12 @@ function ProcoraPanel({
       {/* Footer hint */}
       {sendableRows.length === 0 && (
         <p className="text-xs" style={{ color: "var(--p-muted)" }}>
-          Enter at least one supplier email above to enable sending.
+          Generate the RFQ draft and enter at least one supplier email above to enable sending.
         </p>
       )}
       {sendableRows.length > 0 && sendableRows.length < rows.filter(r => r.supplierId).length && (
         <p className="text-xs" style={{ color: "var(--p-muted)" }}>
-          Suppliers without an email will be skipped.
+          Suppliers without an email or without a generated RFQ draft will be skipped.
         </p>
       )}
     </div>

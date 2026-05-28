@@ -11,7 +11,7 @@ import * as procurementSchema from "./procurement-schema";
  * The HTTP driver is the right choice for Next.js serverless routes:
  * - Zero idle connections (important for Neon's autoscale-to-zero)
  * - Works in edge and Node.js runtimes
- * - db.transaction() is available as a batched pipeline
+ * - db.batch() is available for grouped writes over the HTTP driver
  *
  * If you need true interactive transactions (BEGIN/COMMIT) for complex
  * multi-step workflows, switch to drizzle-orm/neon-serverless with the

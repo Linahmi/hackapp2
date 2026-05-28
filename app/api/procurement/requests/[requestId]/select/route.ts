@@ -74,90 +74,80 @@ export async function POST(
     return Response.json({ error: "Quotation not found for this request" }, { status: 404 });
   }
 
-  const selectionId = await db.transaction(async (tx) => {
-    // Check for an existing active selection (anything that isn't REJECTED)
-    const existing = await tx.query.supplierSelection.findFirst({
-      where: and(
-        eq(supplierSelection.requestId, requestId),
-        ne(supplierSelection.status, "REJECTED"),
-      ),
-      with: { quotation: { with: { supplier: true } } },
-    });
-
-    if (existing && !parsed.data.force) {
-      // Return a sentinel value — caller checks and returns 409
-      return { conflict: existing } as const;
-    }
-
-    if (existing) {
-      // Supersede the old selection — keep it for audit, mark REJECTED
-      await tx
-        .update(supplierSelection)
-        .set({ status: "REJECTED" })
-        .where(eq(supplierSelection.id, existing.id));
-
-      // Reset previously SELECTED quotation back to SUBMITTED
-      await tx
-        .update(quotation)
-        .set({ status: "SUBMITTED" })
-        .where(eq(quotation.id, existing.quotationId));
-    }
-
-    // Insert the new selection
-    const [newSelection] = await tx
-      .insert(supplierSelection)
-      .values({
-        requestId,
-        quotationId: parsed.data.quotationId,
-        selectedBy: session.user.id,
-        justification: parsed.data.justification,
-      })
-      .returning();
-
-    if (!newSelection) throw new Error("Failed to create selection");
-
-    // Mark chosen quotation as SELECTED
-    await tx
-      .update(quotation)
-      .set({ status: "SELECTED" })
-      .where(eq(quotation.id, parsed.data.quotationId));
-
-    // Mark all OTHER quotations in this request as NOT_SELECTED
-    const campaigns = await tx.query.rfqCampaign.findMany({
-      where: eq(rfqCampaign.requestId, requestId),
-      with: { quotations: { columns: { id: true } } },
-    });
-    const otherIds = campaigns
-      .flatMap((c) => c.quotations.map((q) => q.id))
-      .filter((id) => id !== parsed.data.quotationId);
-
-    if (otherIds.length > 0) {
-      await tx
-        .update(quotation)
-        .set({ status: "NOT_SELECTED" })
-        .where(inArray(quotation.id, otherIds));
-    }
-
-    return { id: newSelection.id } as const;
+  const existing = await db.query.supplierSelection.findFirst({
+    where: and(
+      eq(supplierSelection.requestId, requestId),
+      ne(supplierSelection.status, "REJECTED"),
+    ),
+    with: { quotation: { with: { supplier: true } } },
   });
 
-  // Handle conflict case (existing active selection, force not set)
-  if ("conflict" in selectionId) {
-    // selectionId.conflict is the existing active selection
-    const c = selectionId.conflict!;
+  if (existing && !parsed.data.force) {
     return Response.json(
       {
         error: "A supplier has already been selected for this request",
         conflict: {
-          selectionId: c.id,
-          supplierName: c.quotation?.supplier?.name ?? "Unknown",
-          selectedAt: c.selectedAt,
-          justification: c.justification,
+          selectionId: existing.id,
+          supplierName: existing.quotation?.supplier?.name ?? "Unknown",
+          selectedAt: existing.selectedAt,
+          justification: existing.justification,
         },
       },
       { status: 409 },
     );
   }
+
+  if (existing) {
+    await db.batch([
+      db
+        .update(supplierSelection)
+        .set({ status: "REJECTED" })
+        .where(eq(supplierSelection.id, existing.id)),
+      db
+        .update(quotation)
+        .set({ status: "SUBMITTED" })
+        .where(eq(quotation.id, existing.quotationId)),
+    ]);
+  }
+
+  const [newSelection] = await db
+    .insert(supplierSelection)
+    .values({
+      requestId,
+      quotationId: parsed.data.quotationId,
+      selectedBy: session.user.id,
+      justification: parsed.data.justification,
+    })
+    .returning();
+
+  if (!newSelection) throw new Error("Failed to create selection");
+
+  const campaigns = await db.query.rfqCampaign.findMany({
+    where: eq(rfqCampaign.requestId, requestId),
+    with: { quotations: { columns: { id: true } } },
+  });
+  const otherIds = campaigns
+    .flatMap((c) => c.quotations.map((q) => q.id))
+    .filter((id) => id !== parsed.data.quotationId);
+
+  const quotationUpdates = [
+    db
+      .update(quotation)
+      .set({ status: "SELECTED" })
+      .where(eq(quotation.id, parsed.data.quotationId)),
+  ];
+
+  if (otherIds.length > 0) {
+    quotationUpdates.push(
+      db
+        .update(quotation)
+        .set({ status: "NOT_SELECTED" })
+        .where(inArray(quotation.id, otherIds)),
+    );
+  }
+
+  await db.batch(quotationUpdates);
+  const selectionId = newSelection.id;
 
   await logAuditEvent({
     requestId,
@@ -165,20 +155,17 @@ export async function POST(
     message: `Supplier selected: ${quotationRow.supplier.name}`,
     metadata: {
       quotationId: parsed.data.quotationId,
-      selectionId: selectionId.id,
+      selectionId,
       supplierId: quotationRow.supplierId,
       supplierName: quotationRow.supplier.name,
       superseded: parsed.data.force,
     },
   });
 
-  // Advance request status to SUPPLIER_SELECTED
   await advanceRequestStatus(requestId, "SUPPLIER_SELECTED", [
     "DRAFT", "SEARCHING", "MATCHED", "READY", "SENT", "RFQ_SENT", "QUOTES_RECEIVED", "UNDER_REVIEW",
   ]).catch((err) => console.error("[status] Failed to advance to SUPPLIER_SELECTED", err));
 
-  // ── Approval workflow ──────────────────────────────────────────────────────
-  // Find approvers whose threshold is exceeded by this quotation's total price.
   const requiredApprovers = await getRequiredApprovers(
     session.user.id,
     quotationRow.totalPrice,
@@ -186,35 +173,31 @@ export async function POST(
   );
 
   if (requiredApprovers.length === 0) {
-    // No approval needed — auto-approve immediately
     await db
       .update(supplierSelection)
       .set({ status: "APPROVED" })
-      .where(eq(supplierSelection.id, selectionId.id));
+      .where(eq(supplierSelection.id, selectionId));
 
     await logAuditEvent({
       requestId,
       type: AUDIT_EVENT_TYPES.SELECTION_AUTO_APPROVED,
       message: "Selection auto-approved (no approval threshold exceeded)",
-      metadata: { selectionId: selectionId.id },
+      metadata: { selectionId },
     });
 
-    // Also advance request to APPROVED when auto-approved
     await advanceRequestStatus(requestId, "APPROVED", ["SUPPLIER_SELECTED"])
       .catch((err) => console.error("[status] Failed to advance to APPROVED", err));
 
-    return Response.json({ ok: true, selectionId: selectionId.id, requiresApproval: false });
+    return Response.json({ ok: true, selectionId, requiresApproval: false });
   }
 
-  // Create approval records and notify each approver
-  await createApprovals(selectionId.id, requiredApprovers.map((a) => a.approverUserId));
+  await createApprovals(selectionId, requiredApprovers.map((a) => a.approverUserId));
 
-  // Fetch buyer's company settings for branded email identity
   const companySettings = await getCompanySettings(session.user.id).catch(() => null);
   const buyerName = session.user.name ?? session.user.email ?? "A buyer";
   const fromName = [companySettings?.senderName, companySettings?.companyName]
     .filter(Boolean)
-    .join(" — ") || buyerName;
+    .join(" - ") || buyerName;
   const fromAddress = env.MAILGUN_DOMAIN ? `noreply@${env.MAILGUN_DOMAIN}` : undefined;
   const emailFrom = fromAddress ? `${fromName} <${fromAddress}>` : undefined;
   const approvalsUrl = `${(env.NEXT_PUBLIC_APP_URL ?? env.BETTER_AUTH_URL).replace(/\/$/, "")}/approvals`;
@@ -225,7 +208,7 @@ export async function POST(
         userId: a.approverUserId,
         type: "APPROVAL_REQUESTED",
         payload: {
-          selectionId: selectionId.id,
+          selectionId,
           requestId,
           requestTitle: procurementRequest.title,
           supplierName: quotationRow.supplier.name,
@@ -239,7 +222,7 @@ export async function POST(
         from: emailFrom,
         replyTo: companySettings?.senderEmail ?? undefined,
         to: a.approverUser.email,
-        subject: `Approval requested — ${quotationRow.supplier.name} (${Number(quotationRow.totalPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quotationRow.currency})`,
+        subject: `Approval requested - ${quotationRow.supplier.name} (${Number(quotationRow.totalPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quotationRow.currency})`,
         text: [
           `Hi ${a.approverUser.name},`,
           ``,
@@ -250,7 +233,7 @@ export async function POST(
           `Review and approve or reject this selection at:`,
           approvalsUrl,
           ``,
-          `— ${fromName}`,
+          `- ${fromName}`,
         ].join("\n"),
       }).then((result) => {
         if (!result.ok) console.error("[email] Failed to email approver:", result.error);
@@ -263,11 +246,11 @@ export async function POST(
     type: AUDIT_EVENT_TYPES.SELECTION_SUBMITTED_FOR_APPROVAL,
     message: `Selection submitted for approval to ${requiredApprovers.length} approver${requiredApprovers.length !== 1 ? "s" : ""}`,
     metadata: {
-      selectionId: selectionId.id,
+      selectionId,
       approverCount: requiredApprovers.length,
       approverIds: requiredApprovers.map((a) => a.approverUserId),
     },
   });
 
-  return Response.json({ ok: true, selectionId: selectionId.id, requiresApproval: true, approverCount: requiredApprovers.length });
+  return Response.json({ ok: true, selectionId, requiresApproval: true, approverCount: requiredApprovers.length });
 }

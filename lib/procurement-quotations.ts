@@ -186,8 +186,8 @@ export async function submitSupplierQuotation(
   }
 
   const submittedAt = new Date();
-  const quotationRow = await db.transaction(async (tx) => {
-    const [quotationRow] = await tx
+  const [quotationRows, usedTokens, messageRows] = await db.batch([
+    db
       .insert(quotation)
       .values({
         attachmentUrl: normalizeOptionalText(parsed.data.attachmentUrl),
@@ -208,37 +208,36 @@ export async function submitSupplierQuotation(
         unitPrice: parsed.data.unitPrice.toFixed(2),
         userAgent: requestMeta.userAgent,
       })
-      .returning();
-
-    if (!quotationRow) {
-      throw new Error("Failed to create quotation");
-    }
-
-    const [usedToken] = await tx
+      .returning(),
+    db
       .update(supplierResponseToken)
       .set({ usedAt: submittedAt })
       .where(eq(supplierResponseToken.id, context.id))
-      .returning();
-
-    if (!usedToken) {
-      throw new Error("Failed to mark supplier response token as used");
-    }
-
-    const [messageRow] = await tx
+      .returning(),
+    db
       .update(rfqMessage)
       .set({
         repliedAt: submittedAt,
         status: "REPLIED",
       })
       .where(eq(rfqMessage.id, context.rfqMessage.id))
-      .returning();
+      .returning(),
+  ]);
 
-    if (!messageRow) {
-      throw new Error("Failed to update RFQ message status");
-    }
+  const [quotationRow] = quotationRows;
+  if (!quotationRow) {
+    throw new Error("Failed to create quotation");
+  }
 
-    return quotationRow;
-  });
+  const [usedToken] = usedTokens;
+  if (!usedToken) {
+    throw new Error("Failed to mark supplier response token as used");
+  }
+
+  const [messageRow] = messageRows;
+  if (!messageRow) {
+    throw new Error("Failed to update RFQ message status");
+  }
 
   const buyerUserId = context.rfqMessage.campaign.request.userId;
 
